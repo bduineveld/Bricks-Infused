@@ -3,33 +3,15 @@
    viewBox="0 0 239.01 239.01001"
    version="1.1"
    id="svg17"
-   sodipodi:docname="bricks-infused-2026.svg"
    width="239.00999"
    height="239.00999"
-   inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg">
-  <sodipodi:namedview
-     id="namedview17"
-     pagecolor="#ffffff"
-     bordercolor="#000000"
-     borderopacity="0.25"
-     inkscape:showpageshadow="2"
-     inkscape:pageopacity="0.0"
-     inkscape:pagecheckerboard="0"
-     inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="0.92384125"
-     inkscape:cx="472.48378"
-     inkscape:cy="119.60929"
-     inkscape:current-layer="Beeldmerk" />
   <defs
      id="defs1">
     <linearGradient
-       id="linearGradient19"
-       inkscape:collect="always">
+       id="linearGradient19">
       <stop
          style="stop-color:#ae52de;stop-opacity:1;"
          offset="0"
@@ -40,8 +22,7 @@
          id="stop20" />
     </linearGradient>
     <linearGradient
-       id="linearGradient17"
-       inkscape:collect="always">
+       id="linearGradient17">
       <stop
          style="stop-color:#ae52de;stop-opacity:1;"
          offset="0"
@@ -66,7 +47,6 @@
       }
     </style>
     <linearGradient
-       inkscape:collect="always"
        xlink:href="#linearGradient17"
        id="linearGradient18"
        x1="0"
@@ -75,7 +55,6 @@
        y2="102.47"
        gradientUnits="userSpaceOnUse" />
     <linearGradient
-       inkscape:collect="always"
        xlink:href="#linearGradient19"
        id="linearGradient20"
        x1="79.66"
@@ -91,7 +70,7 @@
        class="cls-2"
        d="M 225.72,22.8 H 92.94 c -7.33,0 -13.28,5.94 -13.28,13.28 v 59.75 c 0,3.67 -2.97,6.64 -6.64,6.64 H 13.28 C 5.95,102.47 0,108.41 0,115.75 v 53.11 c 0,7.33 5.94,13.28 13.28,13.28 h 53.11 c 7.33,0 13.28,-5.94 13.28,-13.28 v -59.75 c 0,-3.67 2.97,-6.64 6.64,-6.64 h 139.42 c 7.33,0 13.28,-5.94 13.28,-13.28 V 36.08 c 0,-7.33 -5.94,-13.28 -13.28,-13.28 z"
        id="path1"
-       style="fill:url(#linearGradient18)" />
+       style="fill:url(#linearGradient18);opacity:0.5" />
     <path
        class="cls-3"
        d="m 225.72,102.47 h -53.11 c -7.33,0 -13.28,5.94 -13.28,13.28 v 59.75 c 0,3.67 -2.97,6.64 -6.64,6.64 H 92.94 c -7.33,0 -13.28,5.94 -13.28,13.28 v 53.11 c 0,7.33 5.94,13.28 13.28,13.28 h 53.11 c 7.33,0 13.28,-5.94 13.28,-13.28 v -59.75 c 0,-3.67 2.97,-6.64 6.64,-6.64 h 59.75 c 7.33,0 13.28,-5.94 13.28,-13.28 v -53.11 c 0,-7.33 -5.94,-13.28 -13.28,-13.28 z"
