@@ -585,7 +585,7 @@ function addZorgdomeinLinkRow(link, idx) {
   row.innerHTML = `
     <span class="drag-handle" title="Sleep om te verplaatsen" style="cursor: move; user-select: none; margin-right: 6px;">↕</span>
     <input type="text" placeholder="Naam" value="${link.name || ''}">
-    <input type="text" placeholder="Pad (bijv. /zd/supply-matcher/supply)" value="${link.link || ''}">
+    <input type="text" placeholder="Pad (bijv. /supply-matcher/supply)" value="${link.link || ''}">
     <input type="checkbox" class="episodelijst-checkbox" style="display: none;" ${link.episodelijstNodig ? 'checked' : ''}>
     <span class="episodelijst-toggle" title="episodelijst wordt niet gevraagd, klik om te veranderen">⚕️</span>
     <span class="btn-remove" title="Verwijderen" style="margin-left:6px; cursor: pointer;">❌</span>

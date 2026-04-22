@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Bricks Infused",
   "description": "Voegt nieuwe functionaliteiten toe aan Bricks Huisarts.",
-  "version": "1.14.1",
-  "version_name": "v1.14.1 22-04-2026",
+  "version": "1.16.0",
+  "version_name": "v1.16.0 22-04-2026",
   "author": "Dokter Bart",
   "homepage_url": "https://dokterbart.nl/",
   "icons": {
@@ -33,20 +33,21 @@
     },
     {
       "matches": [
-        "https://www.zorgdomein.nl/zd/dashboard*"
+        "https://www.zorgdomein.nl/dashboard*"
       ],
       "js": ["content_zd_dash.js"],
       "run_at": "document_end"
     },
     {
       "matches": [
-        "https://www.zorgdomein.nl/zd/supply-matcher/supply*",
-        "https://www.zorgdomein.nl/zd/protocol/*",
-        "https://www.zorgdomein.nl/zd/choose-product/*",
-        "https://www.zorgdomein.nl/zd/referral/*"
+             "https://www.zorgdomein.nl/dashboard*",
+        "https://www.zorgdomein.nl/supply-matcher/*",
+        "https://www.zorgdomein.nl/protocol/*",
+        "https://www.zorgdomein.nl/choose-product/*",
+        "https://www.zorgdomein.nl/referral/*"
       ],
       "js": ["content_zd_common.js"],
-      "run_at": "document_end"
+      "run_at": "document_start"
     }
   ],
   "permissions": [

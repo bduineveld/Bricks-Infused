@@ -5,36 +5,222 @@ console.log('Zorgdomein common functions loaded');
 console.log('Current URL:', window.location.href);
 console.log('Script loaded at:', new Date().toISOString());
 
+// Pending choose-product URL: sync localStorage + sync storage (snelle redirect eet async sync.set niet).
+const BRICKS_ZD_LS_PENDING = 'bricks_zd_pending_choose_product_v1';
+const CHOOSE_PRODUCT_LINK_CLASS = 'bricks-zd-choose-product-link';
+/** Max leeftijd pending; daarna geen Snelkoppeling op transaction (patient-URL nooit gebruiken). */
+const CHOOSE_PRODUCT_PENDING_MS = 120000;
+
+function isChooseProductPathname(pathname) {
+    return !!pathname && pathname.includes('choose-product') && !pathname.includes('/referral/transaction');
+}
+
+function persistPendingChooseProductPath(urlPath) {
+    if (!urlPath || typeof urlPath !== 'string') return;
+    if (urlPath.includes('/referral/transaction')) return;
+    if (!urlPath.includes('choose-product')) return;
+    const entry = { urlPath, ts: Date.now() };
+    try { window.localStorage.setItem(BRICKS_ZD_LS_PENDING, JSON.stringify(entry)); } catch (e) {}
+    try {
+        chrome.storage.sync.set({
+            pendingChooseProductUrl: urlPath,
+            pendingChooseProductTimestamp: entry.ts
+        });
+    } catch (e) {}
+}
+
+function snapChooseProductFromCurrentLocation() {
+    if (window.location.hostname !== 'www.zorgdomein.nl') return;
+    const path = window.location.pathname + window.location.search;
+    if (isChooseProductPathname(window.location.pathname)) {
+        persistPendingChooseProductPath(path);
+    }
+}
+
+function readLsPendingChooseProduct() {
+    try {
+        const raw = window.localStorage.getItem(BRICKS_ZD_LS_PENDING);
+        if (!raw) return null;
+        const o = JSON.parse(raw);
+        if (!o || !o.urlPath || typeof o.ts !== 'number') return null;
+        return { urlPath: o.urlPath, ts: o.ts };
+    } catch (e) { return null; }
+}
+
+(function bricksZdInstallEarlyPendingCapture() {
+    try {
+        snapChooseProductFromCurrentLocation();
+    } catch (e) {}
+
+    function hrefToChooseProductPath(href) {
+        try {
+            const u = new URL(href, window.location.href);
+            if (u.hostname !== 'www.zorgdomein.nl') return null;
+            if (!isChooseProductPathname(u.pathname)) return null;
+            return u.pathname + u.search;
+        } catch (e) { return null; }
+    }
+
+    function onNavIntent(ev) {
+        const a = ev.target && ev.target.closest && ev.target.closest('a[href]');
+        if (!a) return;
+        const path = hrefToChooseProductPath(a.getAttribute('href') || '');
+        if (!path) return;
+        persistPendingChooseProductPath(path);
+    }
+    window.addEventListener('click', onNavIntent, true);
+    window.addEventListener('auxclick', onNavIntent, true);
+})();
+
+// SPA / client-side navigatie: elke URL-wijziging kan choose-product zijn zonder volledige reload
+(function bricksZdWatchSpaForChooseProduct() {
+    function tick() {
+        try { snapChooseProductFromCurrentLocation(); } catch (e) {}
+    }
+    tick();
+    ['pushState', 'replaceState'].forEach((method) => {
+        const orig = history[method];
+        history[method] = function () {
+            const ret = orig.apply(this, arguments);
+            queueMicrotask(tick);
+            return ret;
+        };
+    });
+    window.addEventListener('popstate', () => queueMicrotask(tick));
+})();
+
+// ZorgDomein-updates: balk is zd-menu-bar (class menu-bar) + rechterkant is zd-menu-bar-right.
+function getZdMenuBarRight() {
+    return document.querySelector('zd-focus-navigation-bar zd-menu-bar-right') ||
+        document.querySelector('zd-focus-navigation-bar .menu-bar__right');
+}
+
+// True als knoop zelf of een descendant de focus-/menu-balk is (voor MutationObserver)
+function isZorgdomeinNavRelevantNode(node) {
+    if (node.nodeType !== Node.ELEMENT_NODE) return false;
+    const tag = node.tagName;
+    if (tag === 'ZD-FOCUS-NAVIGATION-BAR' || tag === 'ZD-MENU-BAR' ||
+        tag === 'ZD-MENU-BAR-RIGHT' || tag === 'ZD-MENU-BAR-LEFT' || tag === 'ZD-MENU-BAR-CENTER') {
+        return true;
+    }
+    return !!(node.querySelector && node.querySelector(
+        'zd-focus-navigation-bar, zd-menu-bar, zd-menu-bar-right'));
+}
+
+// Voorkom parallelle async-pogingen (meerdere setTimeouts + storage-callback = dubbele knoppen)
+let zorgdomeinShortcutAttachBusy = false;
+
+let zorgdomeinNavMutationObserver = null;
+
+/** Volledige https-URL naar choose-product; alleen gezet op /referral/transaction/ met geldige pending. Ook de URL voor Snelkoppeling (geen transaction-URL). */
+let pendingChooseProductBackUrl = null;
+
+/** Op /referral/transaction/: alleen recente choose-product-URL; nooit de patient-specifieke transaction-URL. */
+function getBricksZdShortcutFormUrl() {
+    if (isZorgdomeinTransactionReferralPage()) {
+        return pendingChooseProductBackUrl || null;
+    }
+    return window.location.href;
+}
+
+function isZorgdomeinTransactionReferralPage() {
+    return window.location.pathname.includes('/referral/transaction');
+}
+
+function dedupeChooseProductLinks(menuBarRight) {
+    const links = menuBarRight.querySelectorAll('a.' + CHOOSE_PRODUCT_LINK_CLASS);
+    for (let i = 1; i < links.length; i++) {
+        links[i].remove();
+    }
+}
+
+/** Echte link naar de tussenliggende choose-product-pagina (alleen transaction-referral). */
+function attachChooseProductBackLinkSingle(fullChooseProductUrl) {
+    if (!fullChooseProductUrl || !isZorgdomeinTransactionReferralPage()) return;
+    const menuBarRight = getZdMenuBarRight();
+    if (!menuBarRight) return;
+    dedupeChooseProductLinks(menuBarRight);
+    let a = menuBarRight.querySelector('a.' + CHOOSE_PRODUCT_LINK_CLASS);
+    if (!a) {
+        a = document.createElement('a');
+        a.className = CHOOSE_PRODUCT_LINK_CLASS;
+        a.textContent = 'Productkeuze';
+        a.title = 'Open de productkeuze-pagina opnieuw';
+        a.rel = 'noopener';
+        a.style.cssText = [
+            'display:inline-flex', 'align-items:center', 'margin-right:8px',
+            'padding:6px 10px', 'border-radius:4px', 'font-size:13px', 'font-weight:500',
+            'text-decoration:none', 'color:#fff', 'background:#0d6efd', 'border:1px solid #0a58ca',
+            'white-space:nowrap'
+        ].join(';');
+        a.addEventListener('mouseenter', () => { a.style.background = '#0b5ed7'; });
+        a.addEventListener('mouseleave', () => { a.style.background = '#0d6efd'; });
+        menuBarRight.insertBefore(a, menuBarRight.firstChild);
+    }
+    a.href = fullChooseProductUrl;
+}
+
+function scheduleChooseProductBackLink(fullChooseProductUrl) {
+    if (!fullChooseProductUrl || !isZorgdomeinTransactionReferralPage()) return;
+    const run = () => attachChooseProductBackLinkSingle(fullChooseProductUrl);
+    run();
+    setTimeout(run, 500);
+    setTimeout(run, 1500);
+    setTimeout(run, 4000);
+}
+
+function removeChooseProductBackLinks() {
+    try {
+        document.querySelectorAll('a.' + CHOOSE_PRODUCT_LINK_CLASS).forEach((el) => el.remove());
+    } catch (e) {}
+}
+
+function dedupeBricksShortcutButtons(menuBarRight) {
+    const buttons = menuBarRight.querySelectorAll('.bricks-shortcut-btn');
+    for (let i = 1; i < buttons.length; i++) {
+        buttons[i].remove();
+    }
+}
+
 // Functie om de snelkoppeling knop toe te voegen
 function addBricksShortcutButton() {
     console.log('Adding Bricks shortcut button...');
-    
-    // Zoek de navigation bar
-    const navigationBar = document.querySelector('zd-focus-navigation-bar .menu-bar');
-    if (!navigationBar) {
-        console.log('Navigation bar not found');
+
+    const shortcutTargetUrl = getBricksZdShortcutFormUrl();
+    if (shortcutTargetUrl === null) {
+        console.log('Geen Snelkoppeling: transaction-pagina zonder recente choose-product pending (patient-URL wordt nooit opgeslagen)');
         return;
     }
     
-    // Zoek de rechterkant van de menu bar
-    const menuBarRight = navigationBar.querySelector('.menu-bar__right');
+    const menuBarRight = getZdMenuBarRight();
     if (!menuBarRight) {
-        console.log('Menu bar right not found');
+        console.log('Menu bar right not found (zd-menu-bar-right / .menu-bar__right)');
         return;
     }
-    
-    // Controleer of de knop al bestaat
+    dedupeBricksShortcutButtons(menuBarRight);
     if (menuBarRight.querySelector('.bricks-shortcut-btn')) {
         console.log('Bricks shortcut button already exists');
         return;
     }
+    if (zorgdomeinShortcutAttachBusy) {
+        return;
+    }
+    zorgdomeinShortcutAttachBusy = true;
     
-    // Controleer of de huidige pagina al als snelkoppeling bestaat
-    checkIfPageExistsAsShortcut((exists) => {
-        if (exists) {
-            console.log('Current page already exists as shortcut, not adding button');
-            return;
-        }
+    // Op transaction met pending: check choose-product-URL, niet de transaction-URL (anders wint de verkeerde knop-race)
+    checkIfUrlExistsAsShortcut(shortcutTargetUrl, (exists) => {
+        try {
+            if (exists) {
+                console.log('Shortcut target URL already exists as shortcut, not adding button:', shortcutTargetUrl);
+                return;
+            }
+            if (!menuBarRight.isConnected) {
+                return;
+            }
+            dedupeBricksShortcutButtons(menuBarRight);
+            if (menuBarRight.querySelector('.bricks-shortcut-btn')) {
+                return;
+            }
         
         // Maak de knop
         const shortcutButton = document.createElement('button');
@@ -74,13 +260,16 @@ function addBricksShortcutButton() {
         
         // Click handler
         shortcutButton.addEventListener('click', () => {
-            console.log('Bricks shortcut button clicked');
+            console.log('Bricks shortcut button clicked, target URL:', getBricksZdShortcutFormUrl());
             createBricksShortcut();
         });
         
-        // Voeg de knop toe aan de rechterkant
-        menuBarRight.appendChild(shortcutButton);
-        console.log('Bricks shortcut button added successfully');
+            // Voeg de knop toe aan de rechterkant
+            menuBarRight.appendChild(shortcutButton);
+            console.log('Bricks shortcut button added successfully');
+        } finally {
+            zorgdomeinShortcutAttachBusy = false;
+        }
     });
 }
 
@@ -109,13 +298,13 @@ function checkIfPageExistsAsShortcut(callback) {
 // Functie om een snelkoppeling in Bricks te maken
 function createBricksShortcut() {
     console.log('Creating Bricks shortcut...');
-    
-    // Haal de huidige URL op
-    const currentUrl = window.location.href;
-    console.log('Current URL:', currentUrl);
-    
-    // Toon het invoer formulier
-    showShortcutForm(currentUrl);
+    const targetUrl = getBricksZdShortcutFormUrl();
+    if (targetUrl === null) {
+        console.log('Geen formulier: geen recente choose-product-URL voor deze transaction-pagina');
+        return;
+    }
+    console.log('Shortcut form URL:', targetUrl);
+    showShortcutForm(targetUrl);
 }
 
 // Functie om het snelkoppeling formulier te tonen
@@ -377,29 +566,41 @@ function showNotification(message) {
 
 // Functie om de observer te starten
 function startZorgdomeinObserver() {
-    const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                // Check of de navigation bar is toegevoegd
-                const hasNavigationBar = Array.from(mutation.addedNodes).some(node => 
-                    node.nodeType === Node.ELEMENT_NODE && 
-                    node.querySelector && 
-                    node.querySelector('zd-focus-navigation-bar')
-                );
-                
-                if (hasNavigationBar) {
-                    console.log('Navigation bar detected, adding shortcut button');
-                    setTimeout(addBricksShortcutButton, 500);
+    if (zorgdomeinNavMutationObserver) {
+        return;
+    }
+    const attachObserver = () => {
+        if (!document.body) return;
+        if (zorgdomeinNavMutationObserver) return;
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                    const hasNavChunk = Array.from(mutation.addedNodes).some(isZorgdomeinNavRelevantNode);
+                    if (hasNavChunk) {
+                        console.log('ZorgDomein nav chunk detected, trying shortcut button');
+                        setTimeout(() => {
+                            addBricksShortcutButton();
+                            if (pendingChooseProductBackUrl) {
+                                attachChooseProductBackLinkSingle(pendingChooseProductBackUrl);
+                            }
+                        }, 500);
+                    }
                 }
-            }
+            });
         });
-    });
 
-    // Start observer
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        zorgdomeinNavMutationObserver = observer;
+    };
+
+    if (document.body) {
+        attachObserver();
+    } else {
+        document.addEventListener('DOMContentLoaded', attachObserver);
+    }
 }
 
 // Functie om pagina te verwerken
@@ -407,15 +608,22 @@ function processPage() {
     const currentUrl = window.location.href;
     console.log('Zorgdomein page detected:', currentUrl);
 
-    if (currentUrl.includes('/choose-product/')) {
+    // Dashboard: alleen vroege klik-capture (IIFE); geen knop hier — dat doet content_zd_dash.js
+    if (currentUrl.indexOf('zorgdomein.nl/dashboard') !== -1) {
+        console.log('Dashboard: pending-capture actief, geen common-knop op dashboard');
+        return;
+    }
+
+    if (isChooseProductPathname(window.location.pathname)) {
+        pendingChooseProductBackUrl = null;
         console.log('Choose-product page detected, saving URL for later use');
         // Converteer URL naar pad voor opslag
         let urlPath = currentUrl;
         if (currentUrl.startsWith('https://www.zorgdomein.nl/')) {
             urlPath = currentUrl.replace('https://www.zorgdomein.nl', '');
         }
-        // Sla de choose-product URL op voor later gebruik
-        chrome.storage.sync.set({ 
+        persistPendingChooseProductPath(urlPath);
+        chrome.storage.sync.set({
             pendingChooseProductUrl: urlPath,
             pendingChooseProductTimestamp: Date.now()
         }, () => {
@@ -423,29 +631,52 @@ function processPage() {
         });
     } else if (currentUrl.includes('/referral/')) {
         console.log('Referral page detected, checking for pending choose-product URL');
-        // Controleer of er een opgeslagen choose-product URL is
+        const lsPending = readLsPendingChooseProduct();
         chrome.storage.sync.get(['pendingChooseProductUrl', 'pendingChooseProductTimestamp'], (result) => {
-            if (result.pendingChooseProductUrl && result.pendingChooseProductTimestamp) {
-                const timeDiff = Date.now() - result.pendingChooseProductTimestamp;
-                // Alleen gebruiken als de URL recent is (binnen 5 minuten)
-                if (timeDiff < 300000) {
-                    console.log('Using pending choose-product URL:', result.pendingChooseProductUrl);
-                    // Reconstruer volledige URL en initialiseer
-                    let fullUrl = result.pendingChooseProductUrl;
-                    if (!fullUrl.startsWith('http')) {
-                        fullUrl = 'https://www.zorgdomein.nl' + (fullUrl.startsWith('/') ? fullUrl : '/' + fullUrl);
-                    }
-                    initializeWithPendingUrl(fullUrl);
+            const syncPending = (result.pendingChooseProductUrl && result.pendingChooseProductTimestamp)
+                ? { urlPath: result.pendingChooseProductUrl, ts: result.pendingChooseProductTimestamp }
+                : null;
+            let chosen = null;
+            if (lsPending && syncPending) {
+                chosen = lsPending.ts >= syncPending.ts ? lsPending : syncPending;
+            } else {
+                chosen = lsPending || syncPending;
+            }
+            const timeDiff = chosen ? (Date.now() - chosen.ts) : Infinity;
+
+            if (chosen && timeDiff < CHOOSE_PRODUCT_PENDING_MS) {
+                let fullUrl = chosen.urlPath;
+                if (!fullUrl.startsWith('http')) {
+                    fullUrl = 'https://www.zorgdomein.nl' + (fullUrl.startsWith('/') ? fullUrl : '/' + fullUrl);
+                }
+                console.log('Using pending choose-product URL:', fullUrl);
+                if (isZorgdomeinTransactionReferralPage()) {
+                    pendingChooseProductBackUrl = fullUrl;
+                    scheduleChooseProductBackLink(fullUrl);
+                    // Geen initializeWithPendingUrl: die tweede knop-race zorgde dat Snelkoppeling de transaction-URL pakte.
+                    // Eén knop via initializeZorgdomeinPage + getBricksZdShortcutFormUrl() → choose-product-URL in het formulier.
+                    initializeZorgdomeinPage();
                 } else {
-                    console.log('Pending URL too old, ignoring');
-                    chrome.storage.sync.remove(['pendingChooseProductUrl', 'pendingChooseProductTimestamp']);
+                    pendingChooseProductBackUrl = null;
+                    initializeWithPendingUrl(fullUrl);
                 }
             } else {
-                console.log('No pending choose-product URL found');
+                if (chosen) {
+                    console.log('Pending URL too old, ignoring');
+                    try { window.localStorage.removeItem(BRICKS_ZD_LS_PENDING); } catch (e) {}
+                    chrome.storage.sync.remove(['pendingChooseProductUrl', 'pendingChooseProductTimestamp']);
+                } else {
+                    console.log('No pending choose-product URL found');
+                }
+                pendingChooseProductBackUrl = null;
+                removeChooseProductBackLinks();
+                initializeZorgdomeinPage();
             }
         });
     } else {
         console.log('Standard Zorgdomein page, initializing normally');
+        pendingChooseProductBackUrl = null;
+        removeChooseProductBackLinks();
         // Normale initialisatie voor supply-matcher en protocol pagina's
         initializeZorgdomeinPage();
     }
@@ -457,6 +688,7 @@ processPage();
 // Eenvoudige interval-based URL monitoring
 let lastProcessedUrl = window.location.href;
 let urlCheckInterval = setInterval(() => {
+    try { snapChooseProductFromCurrentLocation(); } catch (e) {}
     const currentUrl = window.location.href;
     if (currentUrl !== lastProcessedUrl) {
         console.log('URL changed from', lastProcessedUrl, 'to', currentUrl);
@@ -467,7 +699,7 @@ let urlCheckInterval = setInterval(() => {
             processPage();
         }, 1000);
     }
-}, 1000); // Check elke seconde
+}, 500);
 
 
 console.log('Debug functie beschikbaar: window.debugZorgdomein()');
@@ -493,16 +725,16 @@ window.debugZorgdomein = function() {
 
 // Functie om te initialiseren met een opgeslagen URL
 function initializeWithPendingUrl(savedUrl) {
-    // Wacht tot de pagina volledig geladen is
+    const scheduleTry = () => {
+        addBricksShortcutButtonWithUrl(savedUrl);
+        setTimeout(() => addBricksShortcutButtonWithUrl(savedUrl), 1500);
+        setTimeout(() => addBricksShortcutButtonWithUrl(savedUrl), 4000);
+    };
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(() => addBricksShortcutButtonWithUrl(savedUrl), 1000);
-        });
+        document.addEventListener('DOMContentLoaded', scheduleTry);
     } else {
-        setTimeout(() => addBricksShortcutButtonWithUrl(savedUrl), 1000);
+        scheduleTry();
     }
-    
-    // Start observer
     startZorgdomeinObserver();
 }
 
@@ -510,32 +742,35 @@ function initializeWithPendingUrl(savedUrl) {
 function addBricksShortcutButtonWithUrl(targetUrl) {
     console.log('Adding Bricks shortcut button with specific URL:', targetUrl);
     
-    // Zoek de navigation bar
-    const navigationBar = document.querySelector('zd-focus-navigation-bar .menu-bar');
-    if (!navigationBar) {
-        console.log('Navigation bar not found');
-        return;
-    }
-    
-    // Zoek de rechterkant van de menu bar
-    const menuBarRight = navigationBar.querySelector('.menu-bar__right');
+    const menuBarRight = getZdMenuBarRight();
     if (!menuBarRight) {
-        console.log('Menu bar right not found');
+        console.log('Menu bar right not found (zd-menu-bar-right / .menu-bar__right)');
         return;
     }
-    
-    // Controleer of de knop al bestaat
+    dedupeBricksShortcutButtons(menuBarRight);
     if (menuBarRight.querySelector('.bricks-shortcut-btn')) {
         console.log('Bricks shortcut button already exists');
         return;
     }
+    if (zorgdomeinShortcutAttachBusy) {
+        return;
+    }
+    zorgdomeinShortcutAttachBusy = true;
     
     // Controleer of de target URL al als snelkoppeling bestaat
     checkIfUrlExistsAsShortcut(targetUrl, (exists) => {
-        if (exists) {
-            console.log('Target URL already exists as shortcut, not adding button');
-            return;
-        }
+        try {
+            if (exists) {
+                console.log('Target URL already exists as shortcut, not adding button');
+                return;
+            }
+            if (!menuBarRight.isConnected) {
+                return;
+            }
+            dedupeBricksShortcutButtons(menuBarRight);
+            if (menuBarRight.querySelector('.bricks-shortcut-btn')) {
+                return;
+            }
         
         // Maak de knop
         const shortcutButton = document.createElement('button');
@@ -579,9 +814,11 @@ function addBricksShortcutButtonWithUrl(targetUrl) {
             createBricksShortcutWithUrl(targetUrl);
         });
         
-        // Voeg de knop toe aan de rechterkant
-        menuBarRight.appendChild(shortcutButton);
-        console.log('Bricks shortcut button added successfully with URL:', targetUrl);
+            menuBarRight.appendChild(shortcutButton);
+            console.log('Bricks shortcut button added successfully with URL:', targetUrl);
+        } finally {
+            zorgdomeinShortcutAttachBusy = false;
+        }
     });
 }
 
@@ -618,13 +855,16 @@ function createBricksShortcutWithUrl(targetUrl) {
 function initializeZorgdomeinPage() {
     console.log('Initializing Zorgdomein page...');
     
-    // Wacht tot de pagina volledig geladen is
+    const scheduleTry = () => {
+        addBricksShortcutButton();
+        setTimeout(addBricksShortcutButton, 1500);
+        setTimeout(addBricksShortcutButton, 4000);
+    };
+    
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(addBricksShortcutButton, 1000);
-        });
+        document.addEventListener('DOMContentLoaded', scheduleTry);
     } else {
-        setTimeout(addBricksShortcutButton, 1000);
+        scheduleTry();
     }
     
     // Start observer
