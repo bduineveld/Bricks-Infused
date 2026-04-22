@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="nl">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instellingen Bricks Infused</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #333;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      padding: 32px;
+      margin-bottom: 24px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    h1 {
+      font-size: 2.2em;
+      font-weight: 700;
+      margin: 0;
+      color: #2d3748;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    h1 img {
+      width: 32px;
+      height: 32px;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+    }
+
+    h2 {
+      font-size: 1.4em;
+      font-weight: 600;
+      color: #4a5568;
+      margin: 0 0 20px 0;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 500;
+      color: #4a5568;
+      margin-bottom: 8px;
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="url"] {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.2s ease;
+      background: #f7fafc;
+    }
+
+    .form-group input[type="text"]:focus,
+    .form-group input[type="url"]:focus {
+      outline: none;
+      border-color: #667eea;
+      background: white;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .form-group input[type="text"]:disabled {
+      background: #f7fafc;
+      color: #a0aec0;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+
+    .checkbox-group {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      background: #f7fafc;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .checkbox-item:hover {
+      background: #edf2f7;
+      border-color: #e2e8f0;
+    }
+
+    .checkbox-item input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #667eea;
+      cursor: pointer;
+    }
+
+    .checkbox-item label {
+      margin: 0;
+      cursor: pointer;
+      font-weight: 500;
+      color: #4a5568;
+      flex: 1;
+    }
+
+    .btnlabel-row,
+    .zorgdomein-link-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+      align-items: center;
+      padding: 16px;
+      background: #f7fafc;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .btnlabel-row:hover,
+    .zorgdomein-link-row:hover {
+      background: #edf2f7;
+      border-color: #e2e8f0;
+    }
+
+    .btnlabel-row input[type="text"],
+    .zorgdomein-link-row input[type="text"] {
+      width: 140px;
+      margin: 0;
+    }
+
+    .zorgdomein-link-row input[type="url"] {
+      width: 240px;
+      margin: 0;
+    }
+
+    .btnlabel-row button,
+    .zorgdomein-link-row button {
+      font-size: 12px;
+      padding: 8px 16px;
+      margin: 0;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      background: #e2e8f0;
+      color: #4a5568;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .btn-secondary:hover {
+      background: #cbd5e0;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+      box-shadow: 0 4px 12px rgba(245, 101, 101, 0.3);
+    }
+
+    .btn-danger:hover {
+      box-shadow: 0 8px 20px rgba(245, 101, 101, 0.4);
+    }
+
+    .btn-small {
+      padding: 8px 16px;
+      font-size: 12px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 2px solid #e2e8f0;
+    }
+
+    #status {
+      color: #38a169;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    .episodelijst-toggle {
+      cursor: pointer;
+      font-size: 1.2em;
+      opacity: 0.3;
+      transition: opacity 0.2s;
+    }
+
+    .episodelijst-toggle.active {
+      opacity: 1;
+    }
+
+    .section {
+      margin-bottom: 32px;
+    }
+
+    .section:last-child {
+      margin-bottom: 0;
+    }
+
+    .expandable-section {
+      margin-top: 16px;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .expandable-section.collapsed {
+      max-height: 0;
+      margin-top: 0;
+      opacity: 0;
+    }
+
+    .expandable-section.expanded {
+      max-height: 1000px;
+      opacity: 1;
+    }
+
+    .checkbox-item {
+      position: relative;
+    }
+
+    .expand-toggle {
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      font-size: 18px;
+      color: #667eea;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .expand-toggle:hover {
+      background: rgba(102, 126, 234, 0.1);
+      color: #5a67d8;
+    }
+
+    .expand-toggle::after {
+      content: '▼';
+      transition: transform 0.3s ease;
+    }
+
+    .expand-toggle.collapsed::after {
+      transform: rotate(-90deg);
+    }
+
+    .checkbox-item.has-expandable {
+      padding-right: 50px;
+    }
+
+    .expandable-item {
+      background: #f7fafc;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .expandable-item:hover {
+      background: #edf2f7;
+      border-color: #e2e8f0;
+    }
+
+    .expandable-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .expandable-header .expand-toggle {
+      position: static;
+      transform: none;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        padding: 16px;
+      }
+
+      .card {
+        padding: 24px;
+      }
+
+      h1 {
+        font-size: 1.8em;
+      }
+
+      .btnlabel-row,
+      .zorgdomein-link-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .btnlabel-row input[type="text"],
+      .zorgdomein-link-row input[type="text"],
+      .zorgdomein-link-row input[type="url"] {
+        width: 100%;
+      }
+
+      .actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="header">
+        <h1>
+          <img src="bricks-infused.svg" alt="Bricks Infused">
+          Instellingen Bricks Infused
+        </h1>
+      </div>
+
+      <form id="optionsForm">
+        <!-- Basis instellingen -->
+        <div class="section">
+          <div class="form-group">
+            <label for="opt-klantnummer">Bricks klantnummer</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input type="text" id="opt-klantnummer" placeholder="Bijv. 1902" disabled style="flex: 1;">
+              <button type="button" id="edit-klantnummer" class="btn btn-secondary btn-small">✏️ Bewerken</button>
+            </div>
+          </div>
+      
+          <div class="checkbox-group">
+      
+      
+            <div class="checkbox-item">
+              <input type="checkbox" id="opt-resizer">
+              <label for="opt-resizer">Verander de grootte van de kolommen in het journaal</label>
+            </div>
+      
+            <div class="checkbox-item">
+              <input type="checkbox" id="opt-declareren">
+              <label for="opt-declareren">In declaratiescherm consult enkel expliciet op gebeurd zetten</label>
+            </div>
+      
+            <div class="checkbox-item">
+              <input type="checkbox" id="opt-medicijn">
+              <label for="opt-medicijn">Opiaten en benzo's in medicatie authorisatielijst arceren</label>
+            </div>
+
+            <div class="checkbox-item has-expandable">
+              <input type="checkbox" id="opt-knoppen">
+              <label for="opt-knoppen">Communicatie adresboek snelkoppelingen</label>
+              <button type="button" class="expand-toggle collapsed" data-target="comm-knoppen-section"></button>
+            </div>
+      
+            <div class="expandable-section collapsed" id="comm-knoppen-section">
+              <h3 style="margin: 16px 0 12px 0; font-size: 1.1em; color: #4a5568;">Communicatie knoppen aanpassen</h3>
+              <div id="btnlabels-list"></div>
+              <button type="button" id="addBtnLabel" class="btn btn-secondary btn-small">Nieuwe knop toevoegen</button>
+            </div>
+      
+            <div class="checkbox-item has-expandable">
+              <input type="checkbox" id="opt-zorgdomein">
+              <label for="opt-zorgdomein">Zorgdomein snelkoppelingen</label>
+              <button type="button" class="expand-toggle collapsed" data-target="zorgdomein-section"></button>
+            </div>
+      
+            <div class="expandable-section collapsed" id="zorgdomein-section">
+              <h3 style="margin: 16px 0 12px 0; font-size: 1.1em; color: #4a5568;">Zorgdomein snelkoppelingen aanpassen
+              </h3>
+              <div id="zorgdomein-links-list"></div>
+              <button type="button" id="addZorgdomeinLink" class="btn btn-secondary btn-small">Nieuwe snelkoppeling
+                toevoegen</button>
+            </div>
+      
+
+      
+            <div class="checkbox-item">
+              <input type="checkbox" id="opt-pdf-export">
+              <label for="opt-pdf-export">Exporteer brief als PDF <span
+                  style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(erg basic, is in
+                  ontwikkeling)</span></label>
+            </div>
+
+            <div class="checkbox-item">
+              <input type="checkbox" id="opt-juvoly">
+              <label for="opt-juvoly">Juvoly knop <span style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(nog niet
+                  functioneel)</span></label>
+            </div>
+
+          </div> <!--checkbox-group end -->
+        </div> <!--section 1 end -->
+      
+        <!-- Instellingen in- en exporteren -->
+        <div class="section">
+          <div class="expandable-item">
+            <div class="expandable-header">
+              <h3 style="margin: 0; font-size: 1.2em; color: #4a5568;">Instellingen in- en exporteren <span
+                  style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(komt binnenkort)</span></h3>
+              <button type="button" class="expand-toggle collapsed" data-target="import-export-section"></button>
+            </div>
+      
+            <div class="expandable-section collapsed" id="import-export-section">
+              <div
+                style="background: #f7fafc; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #667eea;">
+                <p style="margin: 0; color: #4a5568; font-size: 14px; line-height: 1.5;">
+                  Hier kun je instellingen opslaan naar je Bricks account zodat je ze tussen verschillende werkplekken
+                  kunt delen.
+                  Handig als je op meerdere computers werkt of je instellingen wilt backuppen.
+                </p>
+              </div>
+      
+              <div style="display: flex; gap: 12px; margin-top: 16px;">
+                <button type="button" id="export-settings" class="btn btn-secondary">
+                  📤 Sla instellingen op in account
+                </button>
+                <button type="button" id="import-settings" class="btn btn-secondary">
+                  📥 Laad instellingen uit account
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      
+        <!-- Acties -->
+        <div class="actions">
+          <button type="submit" class="btn">Opslaan</button>
+          <span id="status"></span>
+          <button type="button" id="closeOptions" class="btn btn-secondary">Sluiten</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+
+</html>

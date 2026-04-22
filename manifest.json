@@ -1,0 +1,64 @@
+{
+  "manifest_version": 3,
+  "name": "Bricks Infused",
+  "description": "Voegt nieuwe functionaliteiten toe aan Bricks Huisarts.",
+  "version": "1.13.1",
+  "version_name": "v1.13.1 22-04-2026",
+  "author": "Dokter Bart",
+  "homepage_url": "https://dokterbart.nl/",
+  "icons": {
+    "16": "bricks-16.png",
+    "32": "bricks-32.png",
+    "48": "bricks-48.png",
+    "128": "bricks-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Bricks Infused"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://brickshuisarts.nl/*/*"
+      ],
+      "js": ["lib/jspdf.umd.min.js", "content.js"],
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "https://www.zorgdomein.nl/zd/dashboard*"
+      ],
+      "js": ["content_zd_dash.js"],
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "https://www.zorgdomein.nl/zd/supply-matcher/supply*",
+        "https://www.zorgdomein.nl/zd/protocol/*",
+        "https://www.zorgdomein.nl/zd/choose-product/*",
+        "https://www.zorgdomein.nl/zd/referral/*"
+      ],
+      "js": ["content_zd_common.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "permissions": [
+    "storage"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["bricks-infused.svg", "bricks.svg"],
+      "matches": [
+        "https://brickshuisarts.nl/*",
+        "https://www.zorgdomein.nl/*"
+      ]
+    }
+  ]
+} 
