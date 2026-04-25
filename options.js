@@ -362,6 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('opt-resizer').checked = data.journaalResizer !== false;
     document.getElementById('opt-declareren').checked = data.declarerenNietOpGebeurd !== false;
     document.getElementById('opt-juvoly').checked = !!data.juvolyKnop;
+    document.getElementById('opt-uprevent').checked = !!data.uprevent;
     document.getElementById('opt-medicijn').checked = data.medicijnMarkeringen !== false;
     document.getElementById('opt-pdf-export').checked = data.pdfExport !== false;
     document.getElementById('opt-zorgdomein').checked = data.zorgdomeinSnelkoppelingen !== false;
@@ -386,13 +387,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const journaalResizer = document.getElementById('opt-resizer').checked;
     const declarerenNietOpGebeurd = document.getElementById('opt-declareren').checked;
     const juvolyKnop = document.getElementById('opt-juvoly').checked;
+    const uprevent = document.getElementById('opt-uprevent').checked;
     const medicijnMarkeringen = document.getElementById('opt-medicijn').checked;
     const pdfExport = document.getElementById('opt-pdf-export').checked;
     const zorgdomeinSnelkoppelingen = document.getElementById('opt-zorgdomein').checked;
     const zorgdomeinDashboardLinks = document.getElementById('opt-zorgdomein-dashboard').checked;
     const btnLabels = collectBtnLabels();
     const zorgdomeinLinks = collectZorgdomeinLinks();
-    setStorage({ klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, medicijnMarkeringen, pdfExport, zorgdomeinSnelkoppelingen, zorgdomeinDashboardLinks, btnLabels, zorgdomeinLinks }, () => {
+    setStorage({ klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, zorgdomeinSnelkoppelingen, zorgdomeinDashboardLinks, btnLabels, zorgdomeinLinks }, () => {
       document.getElementById('status').textContent = 'Opgeslagen!';
       setTimeout(() => document.getElementById('status').textContent = '', 1500);
     });

@@ -5,6 +5,7 @@ const defaultOptions = {
   journaalResizer: true,
   declarerenNietOpGebeurd: true,
   juvolyKnop: false,
+  uprevent: false,
   medicijnMarkeringen: true,
   pdfExport: true,
   zorgdomeinSnelkoppelingen: true,
@@ -12,6 +13,24 @@ const defaultOptions = {
   btnLabels: [],
   zorgdomeinLinks: []
 };
+
+// =============================================================================
+// U-Prevent Infused bridge wiring (see also: U-Prevent Infused/README.md).
+// -----------------------------------------------------------------------------
+// 1. Load both extensions in chrome://extensions (developer mode, unpacked).
+// 2. Copy the ID shown for "U-Prevent Infused" and paste it into
+//    UPREVENT_EXT_IDS below.
+// 3. Copy the ID shown for "Bricks Infused" and paste it into the
+//    "externally_connectable.ids" array in U-Prevent Infused/manifest.json
+//    (replacing BRICKS_INFUSED_EXTENSION_ID_PLACEHOLDER).
+// 4. Reload both extensions.
+// (For stable IDs across re-installs, add a "key" field to each manifest.)
+// =============================================================================
+const UPREVENT_EXT_IDS = [
+  "coeioggedoondkpdoccbncgbbgboedkp" // U-Prevent Infused dev ID
+  // Add store IDs here when published (Chrome/Edge can differ).
+];
+const UPREVENT_INSTALL_URL = "https://dokterbart.nl/u-prevent-infused"; // placeholder install link
 
 let pendingResizerPercentages = {};
 let resizerSaveTimer = null;
@@ -21,6 +40,30 @@ function flushResizerPercentages() {
   chrome.storage.sync.set(pendingResizerPercentages);
   pendingResizerPercentages = {};
   resizerSaveTimer = null;
+}
+
+function sendMessageToFirstAvailableExtension(extensionIds, payload, callback) {
+  if (!Array.isArray(extensionIds) || extensionIds.length === 0) {
+    callback({ ok: false, error: "no-extension-id-configured" });
+    return;
+  }
+
+  let idx = 0;
+  const tryNext = () => {
+    if (idx >= extensionIds.length) {
+      callback({ ok: false, error: "extension-not-found" });
+      return;
+    }
+    const extId = extensionIds[idx++];
+    chrome.runtime.sendMessage(extId, payload, (resp) => {
+      if (chrome.runtime.lastError || !resp) {
+        tryNext();
+        return;
+      }
+      callback({ ok: true, extId, resp });
+    });
+  };
+  tryNext();
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -126,6 +169,55 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   
+  ///////////////////////////////// U-PREVENT CVRM INTEGRATIE //////////////////////////////////////////////////////////////
+  // Ping U-Prevent Infused to check if it is installed and reachable.
+  if (message && message.type === 'uprevent.ping') {
+    if (!UPREVENT_EXT_IDS.length) {
+      sendResponse({ installed: false, reason: 'no-extension-id-configured', installUrl: UPREVENT_INSTALL_URL });
+      return true;
+    }
+    try {
+      sendMessageToFirstAvailableExtension(UPREVENT_EXT_IDS, { type: 'uprevent.ping' }, (result) => {
+        if (!result.ok || !result.resp || !result.resp.ok) {
+          sendResponse({ installed: false, installUrl: UPREVENT_INSTALL_URL });
+          return;
+        }
+        sendResponse({
+          installed: true,
+          version: result.resp.version || null,
+          extensionId: result.extId
+        });
+      });
+    } catch (err) {
+      sendResponse({ installed: false, error: String(err && err.message || err), installUrl: UPREVENT_INSTALL_URL });
+    }
+    return true;
+  }
+
+  // Relay an open + prefill request to U-Prevent Infused.
+  if (message && message.type === 'uprevent.openAndFill') {
+    if (!UPREVENT_EXT_IDS.length) {
+      sendResponse({ ok: false, error: 'no-extension-id-configured' });
+      return true;
+    }
+    try {
+      sendMessageToFirstAvailableExtension(UPREVENT_EXT_IDS, {
+        type: 'uprevent.openAndFill',
+        calculatorPath: message.calculatorPath,
+        text: message.text || ''
+      }, (result) => {
+        if (!result.ok || !result.resp) {
+          sendResponse({ ok: false, error: result.error || 'no-response' });
+          return;
+        }
+        sendResponse(result.resp);
+      });
+    } catch (err) {
+      sendResponse({ ok: false, error: String(err && err.message || err) });
+    }
+    return true;
+  }
+
   // TEST FUNCTIES - MAKKELIJK TE VERWIJDEREN
   if (message && message.type === 'getSecretFromDokterBart') {
     // Haal tekst op uit dokterbart.nl/secret.txt

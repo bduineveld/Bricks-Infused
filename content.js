@@ -2335,4 +2335,674 @@ detectAndSaveKlantnummer();
 //to do: sla alle instellingen in een taak op (exporteren/importeren), zodat ze door alle browsers gedeeld worden binnen hetzelfde account
 
 
+///////////////////////////////// U-PREVENT CVRM INTEGRATIE //////////////////////////////////////////////////////////////
+// Adds a "CVRM" shortcut to the patient shortcutsbar. On click, scrapes the
+// most recent CVRM-relevant journaal entries (sys/dia BP for now) and lets
+// the user either send the text to the U-Prevent Infused extension (which
+// opens the chosen calculator and prefills it) or copy it to the clipboard.
+
+const UPREVENT_CALCULATORS = [
+    // Eerdere hart- en vaatziekten
+    { path: 'smart2Score',    label: 'SMART2',         group: 'Eerdere HVZ',          ageMin: 40, ageMax: 80, lifetime: false },
+    { path: 'smartReach',     label: 'SMART-REACH',    group: 'Eerdere HVZ',          ageMin: 45, ageMax: 80, lifetime: true  },
+    // Diabetes type 2
+    { path: 'score2Diabetes', label: 'SCORE2-Diabetes', group: 'Diabetes type 2',     ageMin: 55, ageMax: 90, lifetime: false },
+    { path: 'dial2Model',     label: 'DIAL2',          group: 'Diabetes type 2',      ageMin: 30, ageMax: 85, lifetime: true  },
+    // Gezond (geen voorgeschiedenis HVZ of DM2)
+    { path: 'score2',         label: 'SCORE2',         group: 'Geen HVZ / geen DM2',  ageMin: 40, ageMax: 69, lifetime: false },
+    { path: 'score2OP',       label: 'SCORE2-OP',      group: 'Geen HVZ / geen DM2',  ageMin: 70, ageMax: 90, lifetime: false },
+    { path: 'lifeCvd2',       label: 'LIFE-CVD2',      group: 'Geen HVZ / geen DM2',  ageMin: 35, ageMax: 89, lifetime: true  }
+];
+
+function uprevent_addShortcut() {
+    const bar = document.querySelector('.side-controls .shortcutsbar');
+    if (!bar) return;
+    if (bar.querySelector('[data-shortcut="CVRM"]')) return;
+
+    const shortcut = document.createElement('div');
+    shortcut.className = 'shortcut';
+    shortcut.title = 'U-Prevent integratie';
+    shortcut.setAttribute('data-shortcut', 'CVRM');
+    shortcut.innerHTML = '<div class="caption" style="border-color: rgb(120, 100, 200);">CVRM</div>';
+    shortcut.addEventListener('click', uprevent_onClick);
+    bar.appendChild(shortcut);
+    console.log('CVRM shortcut toegevoegd aan shortcutsbar');
+}
+
+function uprevent_removeShortcut() {
+    document.querySelectorAll('.side-controls .shortcutsbar [data-shortcut="CVRM"]').forEach((n) => n.remove());
+}
+
+// --- Patiëntheader (Bricks patient-header2-left) --------------------------------
+function uprevent_ageFromDobDdMmYyyy(dobStr) {
+    const m = (dobStr || '').trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (!m) return null;
+    const d = new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
+    if (isNaN(d.getTime())) return null;
+    const today = new Date();
+    let age = today.getUTCFullYear() - d.getUTCFullYear();
+    const mo = today.getUTCMonth() - d.getUTCMonth();
+    if (mo < 0 || (mo === 0 && today.getUTCDate() < d.getUTCDate())) age -= 1;
+    if (age < 0 || age > 120) return null;
+    return age;
+}
+
+function uprevent_parseDdMmYyyyToUtcDate(dateStr) {
+    const m = (dateStr || '').trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (!m) return null;
+    const d = new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
+    if (isNaN(d.getTime())) return null;
+    return d;
+}
+
+function uprevent_ageOnDateFromDob(dobStr, refDateStr) {
+    const dob = uprevent_parseDdMmYyyyToUtcDate(dobStr);
+    const ref = uprevent_parseDdMmYyyyToUtcDate(refDateStr);
+    if (!dob || !ref || ref < dob) return null;
+    let age = ref.getUTCFullYear() - dob.getUTCFullYear();
+    const md = ref.getUTCMonth() - dob.getUTCMonth();
+    if (md < 0 || (md === 0 && ref.getUTCDate() < dob.getUTCDate())) age -= 1;
+    if (age < 0 || age > 120) return null;
+    return age;
+}
+
+function uprevent_parsePatientHeader() {
+    const header = document.querySelector('.patient-header2-left');
+    let age = null;
+    let dobStr = null;
+    if (!header) {
+        return { age: null, dobStr: null };
+    }
+    const naamEl = header.querySelector('.area-profile-fullname .naam');
+    if (naamEl) {
+        const paren = naamEl.textContent.match(/\((\d{1,3})\)/);
+        if (paren) {
+            const n = +paren[1];
+            if (n >= 0 && n <= 120) age = n;
+        }
+    }
+    const dobSpan = header.querySelector('.area-profile-fullname .text-primary span');
+    if (dobSpan) {
+        const d = (dobSpan.textContent || '').trim();
+        if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(d)) dobStr = d;
+    }
+    if (age == null && dobStr) age = uprevent_ageFromDobDdMmYyyy(dobStr);
+    return { age, dobStr };
+}
+
+// Geslacht uit aanhef in .naam: Dhr. = man, Mw. = vrouw, Dhr./Mw. (of Dhr/Mw) = onbekend.
+// Retourneert { line: string } met een regel voor de export, of null als niet te bepalen.
+function uprevent_detectSexLine() {
+    const naamEl = document.querySelector('.patient-header2-left .area-profile-fullname .naam');
+    if (!naamEl) return null;
+    const naamText = (naamEl.textContent || '').replace(/\(\s*\d{1,3}\s*\)/g, '').trim();
+    if (!naamText) return null;
+
+    if (/dhr\.?\s*\/\s*mw\.?/i.test(naamText) || /mw\.?\s*\/\s*dhr\.?/i.test(naamText)) {
+        return { line: 'geslacht: Dhr./Mw.' };
+    }
+    if (/\bmw\./i.test(naamText)) {
+        return { line: 'geslacht: vrouw' };
+    }
+    if (/\bdhr\./i.test(naamText)) {
+        return { line: 'geslacht: man' };
+    }
+    return null;
+}
+
+// --- Episoden ICPC (Episoden-widget) -------------------------------------------
+function uprevent_normalizeIcpc(codeRaw) {
+    return (codeRaw || '').trim().toUpperCase().replace(/\s/g, '');
+}
+
+// HVZ: K74*, K75*, K76*, K89*, K90*, K92*, uitsluitend K99.01 (niet andere K99.xx)
+function uprevent_isHvzCode(codeRaw) {
+    const c = uprevent_normalizeIcpc(codeRaw);
+    if (!c) return false;
+    if (/^K99\.01/.test(c)) return true;
+    if (/^K74/.test(c)) return true;
+    if (/^K75/.test(c)) return true;
+    if (/^K76/.test(c)) return true;
+    if (/^K89/.test(c)) return true;
+    if (/^K90/.test(c)) return true;
+    if (/^K92/.test(c)) return true;
+    return false;
+}
+
+// Diabetes type 2 volgens episodes: T90 of T90.02, expliciet niet T90.01
+function uprevent_isDm2EpisodeCode(codeRaw) {
+    const c = uprevent_normalizeIcpc(codeRaw);
+    if (!c) return false;
+    if (/^T90\.01/.test(c)) return false;
+    if (/^T90\.02/.test(c)) return true;
+    if (c === 'T90') return true;
+    return false;
+}
+
+function uprevent_collectEpisodeIcpcCodes() {
+    const codes = [];
+    const seen = new Set();
+    const pushCode = (raw) => {
+        const t = (raw || '').trim();
+        if (!t || seen.has(t)) return;
+        seen.add(t);
+        codes.push(t);
+    };
+
+    // Layout variant 1 (oude weergave): episode-icpc / icpc-badge blok.
+    document.querySelectorAll('.episoden-content .episode-icpc .split-text span, .episoden-content .icpc-badge .split-text span').forEach((el) => {
+        pushCode(el.textContent);
+    });
+
+    // Layout variant 2 (uitgebreide/grid-weergave): code staat in een losse split-text link.
+    document.querySelectorAll('.episoden-content .episoden-overzicht .split-text').forEach((el) => {
+        const txt = (el.textContent || '').trim();
+        // ICPC patroon zoals K99.01, T90.02, K75, A62, etc.
+        const m = txt.match(/\b([A-Z]\d{2}(?:\.\d{2})?)\b/i);
+        if (m) pushCode(m[1].toUpperCase());
+    });
+
+    return codes;
+}
+
+function uprevent_episodeFlagsFromCodes(codes) {
+    let hvz = false;
+    let dm2 = false;
+    const hvzMatches = [];
+    const dm2Matches = [];
+    codes.forEach((raw) => {
+        if (uprevent_isHvzCode(raw)) {
+            hvz = true;
+            hvzMatches.push(raw.trim());
+        }
+        if (uprevent_isDm2EpisodeCode(raw)) {
+            dm2 = true;
+            dm2Matches.push(raw.trim());
+        }
+    });
+    return { hvz, dm2, codes, hvzMatches, dm2Matches };
+}
+
+function uprevent_collectDiabetesEpisodeDates() {
+    const dates = [];
+    const seen = new Set();
+
+    // Veel episode-regels bevatten in title: "T90.02 ... Datum: dd-mm-jjjj"
+    document.querySelectorAll('.episoden-content .episode-name[title], .episoden-content .cursor-help[title]').forEach((el) => {
+        const title = (el.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
+        if (!title) return;
+        const codeMatch = title.match(/\b([A-Z]\d{2}(?:\.\d{2})?)\b/i);
+        if (!codeMatch) return;
+        const code = codeMatch[1].toUpperCase();
+        if (!uprevent_isDm2EpisodeCode(code)) return;
+        const dateMatch = title.match(/Datum:\s*(\d{1,2}-\d{1,2}-\d{4})/i);
+        if (!dateMatch) return;
+        const d = dateMatch[1];
+        if (seen.has(d)) return;
+        seen.add(d);
+        dates.push(d);
+    });
+
+    // Fallback: scan losse split-text velden in de episode widget.
+    if (!dates.length) {
+        const text = (document.querySelector('.episoden-content')?.textContent || '');
+        const dm2Mentioned = /\bT90(?:\.02)?\b/i.test(text) && !/\bT90\.01\b/i.test(text);
+        if (dm2Mentioned) {
+            const allDates = text.match(/\b\d{1,2}-\d{1,2}-\d{4}\b/g) || [];
+            allDates.forEach((d) => {
+                if (!seen.has(d)) {
+                    seen.add(d);
+                    dates.push(d);
+                }
+            });
+        }
+    }
+
+    return dates;
+}
+
+function uprevent_pickEarliestDate(dateStrings) {
+    let best = null;
+    (dateStrings || []).forEach((s) => {
+        const d = uprevent_parseDdMmYyyyToUtcDate(s);
+        if (!d) return;
+        if (!best || d < best.date) best = { date: d, raw: s };
+    });
+    return best ? best.raw : null;
+}
+
+function uprevent_yearsSinceDate(dateStr) {
+    const d = uprevent_parseDdMmYyyyToUtcDate(dateStr);
+    if (!d) return null;
+    const today = new Date();
+    const now = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+    if (d > now) return null;
+    let years = now.getUTCFullYear() - d.getUTCFullYear();
+    const md = now.getUTCMonth() - d.getUTCMonth();
+    if (md < 0 || (md === 0 && now.getUTCDate() < d.getUTCDate())) years -= 1;
+    if (years < 0 || years > 120) return null;
+    return years;
+}
+
+function uprevent_collectHvzEpisodeDates() {
+    const dates = [];
+    const seen = new Set();
+
+    document.querySelectorAll('.episoden-content .episode-name[title], .episoden-content .cursor-help[title]').forEach((el) => {
+        const title = (el.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
+        if (!title) return;
+        const codeMatch = title.match(/\b([A-Z]\d{2}(?:\.\d{2})?)\b/i);
+        if (!codeMatch) return;
+        const code = codeMatch[1].toUpperCase();
+        if (!uprevent_isHvzCode(code)) return;
+        const dateMatch = title.match(/Datum:\s*(\d{1,2}-\d{1,2}-\d{4})/i);
+        if (!dateMatch) return;
+        const d = dateMatch[1];
+        if (seen.has(d)) return;
+        seen.add(d);
+        dates.push(d);
+    });
+
+    if (!dates.length) {
+        const text = (document.querySelector('.episoden-content')?.textContent || '');
+        const hvzMentioned = /\bK74|K75|K76|K89|K90|K92|K99\.01\b/i.test(text);
+        if (hvzMentioned) {
+            const allDates = text.match(/\b\d{1,2}-\d{1,2}-\d{4}\b/g) || [];
+            allDates.forEach((d) => {
+                if (!seen.has(d)) {
+                    seen.add(d);
+                    dates.push(d);
+                }
+            });
+        }
+    }
+
+    return dates;
+}
+
+// Scrape journaal + patiëntheader + zichtbare episoden. Geen geboortedatum in
+// de export (privacy); leeftijd blijft wel als getal. Bloeddruk als één regel
+// zodat de U-Prevent-parser hem via RR/bloeddruk-patroon herkent.
+function uprevent_collectText() {
+    const lines = [];
+    const seen = new Set();
+    const push = (s) => {
+        if (!s || seen.has(s)) return;
+        seen.add(s);
+        lines.push(s);
+    };
+
+    const { age: headerAge, dobStr } = uprevent_parsePatientHeader();
+    if (headerAge != null) push(`leeftijd: ${headerAge}`);
+
+    const sexLine = uprevent_detectSexLine();
+    if (sexLine) push(sexLine.line);
+
+    const icpcCodes = uprevent_collectEpisodeIcpcCodes();
+    const ep = uprevent_episodeFlagsFromCodes(icpcCodes);
+    push(`HVZ: ${ep.hvz ? 'ja' : 'nee'}, DM2: ${ep.dm2 ? 'ja' : 'nee'}`);
+
+    // Alleen bij DM2: stuur leeftijd op moment van diagnose mee.
+    if (ep.dm2 && dobStr) {
+        const dm2Dates = uprevent_collectDiabetesEpisodeDates();
+        const firstDm2Date = uprevent_pickEarliestDate(dm2Dates);
+        if (firstDm2Date) {
+            const ageAtDm2 = uprevent_ageOnDateFromDob(dobStr, firstDm2Date);
+            if (ageAtDm2 != null) {
+                push(`leeftijd diagnose diabetes: ${ageAtDm2}`);
+            }
+        }
+    }
+
+    // Bij HVZ: jaren sinds het eerste vasculaire event (oudste HVZ-episode).
+    if (ep.hvz) {
+        const hvzDates = uprevent_collectHvzEpisodeDates();
+        const firstHvzDate = uprevent_pickEarliestDate(hvzDates);
+        if (firstHvzDate) {
+            const yearsSinceFirstEvent = uprevent_yearsSinceDate(firstHvzDate);
+            if (yearsSinceFirstEvent != null) {
+                push(`jaren sinds eerste vasculaire event: ${yearsSinceFirstEvent}`);
+            }
+        }
+    }
+
+    // Journaal entries are rendered top = newest, so document order = newest-first.
+    const regels = document.querySelectorAll('.journaal-contact-regel .split-text');
+    let lastSys = null;
+    let lastDia = null;
+    let lastHba1c = null;
+    let lastEgfr = null;
+    let lastCholTotal = null;
+    let lastHdl = null;
+    let lastLdl = null;
+    let lastNonHdl = null;
+    let lastTriglycerides = null;
+    let lastSmoking = null;
+    regels.forEach((regel) => {
+        const text = (regel.textContent || '').trim();
+        if (!text) return;
+        if (lastSys == null) {
+            const sys = text.match(/systolische\s+bloeddruk\s*:\s*(\d{2,3})\b/i);
+            if (sys) lastSys = sys[1];
+        }
+        if (lastDia == null) {
+            const dia = text.match(/diastolische\s+bloeddruk\s*:\s*(\d{2,3})\b/i);
+            if (dia) lastDia = dia[1];
+        }
+        if (lastHba1c == null) {
+            const m = text.match(/hba1c[^:]*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
+            if (m) lastHba1c = m[1].replace(',', '.');
+        }
+        if (lastEgfr == null) {
+            const m = text.match(/egfr[^:]*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
+            if (m) lastEgfr = m[1].replace(',', '.');
+        }
+        if (lastCholTotal == null) {
+            const m = text.match(/cholesterol\s+totaal\s*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
+            if (m) lastCholTotal = m[1].replace(',', '.');
+        }
+        if (lastHdl == null) {
+            const m = text.match(/\bhdl-?\s*cholesterol\s*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
+            if (m) lastHdl = m[1].replace(',', '.');
+        }
+        if (lastLdl == null) {
+            const m = text.match(/\bldl-?\s*cholesterol\s*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
+            if (m) lastLdl = m[1].replace(',', '.');
+        }
+        if (lastNonHdl == null) {
+            const m = text.match(/\bnon-?\s*hdl\s*cholesterol\s*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
+            if (m) lastNonHdl = m[1].replace(',', '.');
+        }
+        if (lastTriglycerides == null) {
+            const m = text.match(/\btriglyceriden\s*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
+            if (m) lastTriglycerides = m[1].replace(',', '.');
+        }
+        if (lastSmoking == null) {
+            const m = text.match(/\broken\s*:\s*(ja|nee|voorheen)\b/i);
+            if (m) {
+                const v = m[1].toLowerCase();
+                lastSmoking = v;
+            }
+        }
+    });
+    if (lastSys != null && lastDia != null) {
+        push(`Bloeddruk: ${lastSys}/${lastDia} mmHg`);
+    }
+    if (lastSmoking != null) {
+        push(`roken: ${lastSmoking}`);
+    }
+    if (lastHba1c != null) {
+        push(`HbA1c IFCC: ${lastHba1c}`);
+    }
+    if (lastEgfr != null) {
+        push(`eGFR: ${lastEgfr}`);
+    }
+    if (lastCholTotal != null) {
+        push(`cholesterol totaal: ${lastCholTotal}`);
+    }
+    if (lastHdl != null) {
+        push(`HDL-cholesterol: ${lastHdl}`);
+    }
+    if (lastLdl != null) {
+        push(`LDL-cholesterol: ${lastLdl}`);
+    }
+    if (lastNonHdl != null) {
+        push(`non-HDL cholesterol: ${lastNonHdl}`);
+    }
+    if (lastTriglycerides != null) {
+        push(`Triglyceriden: ${lastTriglycerides}`);
+    }
+
+    return lines.join('\n');
+}
+
+// Leeftijd uit patiëntheader (haakjes na naam of geboortedatum dd-mm-jjjj).
+function uprevent_detectAge() {
+    const { age, dobStr } = uprevent_parsePatientHeader();
+    if (age != null) return age;
+    if (dobStr) return uprevent_ageFromDobDdMmYyyy(dobStr);
+    const headerText = (document.querySelector('.patient-header2-left')?.textContent
+        || document.querySelector('.patientcard, .patient-header, .patientinfo')?.textContent
+        || '');
+    const yrs = headerText.match(/\b(\d{1,3})\s*(?:jaar|jr)\b/i);
+    if (yrs) {
+        const n = +yrs[1];
+        if (n >= 18 && n <= 110) return n;
+    }
+    const dob = headerText.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b/);
+    if (dob) {
+        const d = new Date(Date.UTC(+dob[3], +dob[2] - 1, +dob[1]));
+        if (!isNaN(d)) {
+            const today = new Date();
+            let a = today.getUTCFullYear() - d.getUTCFullYear();
+            const md = today.getUTCMonth() - d.getUTCMonth();
+            if (md < 0 || (md === 0 && today.getUTCDate() < d.getUTCDate())) a -= 1;
+            if (a >= 0 && a <= 120) return a;
+        }
+    }
+    return null;
+}
+
+let upreventModalEl = null;
+
+function uprevent_closeModal() {
+    if (upreventModalEl) {
+        upreventModalEl.remove();
+        upreventModalEl = null;
+    }
+    document.removeEventListener('keydown', uprevent_onKeyDown);
+}
+
+function uprevent_onKeyDown(e) {
+    if (e.key === 'Escape') uprevent_closeModal();
+}
+
+function uprevent_onClick(e) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    const text = uprevent_collectText();
+    const age = uprevent_detectAge();
+    const episodeFlags = uprevent_episodeFlagsFromCodes(uprevent_collectEpisodeIcpcCodes());
+    uprevent_showPicker(text, age, episodeFlags);
+}
+
+function uprevent_showPicker(text, age, episodeFlags) {
+    uprevent_closeModal();
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2147483646;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;';
+    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) uprevent_closeModal(); });
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-width:560px;width:90%;max-height:90vh;overflow:auto;color:#2d3748;';
+    overlay.appendChild(modal);
+
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid #e2e8f0;';
+    header.innerHTML = `
+        <div style="font-size:1.15em;font-weight:600;flex:1;">U-Prevent CVRM</div>
+        <button type="button" class="uprevent-close" aria-label="Sluiten" style="background:transparent;border:none;font-size:20px;cursor:pointer;color:#718096;line-height:1;">&times;</button>
+    `;
+    header.querySelector('.uprevent-close').addEventListener('click', uprevent_closeModal);
+    modal.appendChild(header);
+
+    // Status badge (async)
+    const status = document.createElement('div');
+    status.style.cssText = 'padding:12px 20px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#4a5568;display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+    status.innerHTML = '<span>U-Prevent Infused: </span><strong class="uprevent-status-text" style="color:#a0aec0;">controleren&hellip;</strong>';
+    modal.appendChild(status);
+
+    // Body
+    const body = document.createElement('div');
+    body.style.cssText = 'padding:16px 20px;';
+    modal.appendChild(body);
+
+    if (text) {
+        const dataNote = document.createElement('div');
+        dataNote.style.cssText = 'background:#f7fafc;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:13px;color:#4a5568;border-left:3px solid #667eea;';
+        dataNote.innerHTML = `<strong>Gevonden gegevens:</strong><pre style="margin:6px 0 0 0;white-space:pre-wrap;font-size:12px;color:#2d3748;font-family:inherit;">${text.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</pre>`;
+        body.appendChild(dataNote);
+    } else {
+        const noData = document.createElement('div');
+        noData.style.cssText = 'background:#fffaf0;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:13px;color:#7b6232;border-left:3px solid #ed8936;';
+        noData.textContent = 'Geen CVRM-gegevens gevonden in het zichtbare journaal. Je kunt nog steeds een calculator openen en zelf invullen.';
+        body.appendChild(noData);
+    }
+
+    if (age != null) {
+        const ageNote = document.createElement('div');
+        ageNote.style.cssText = 'font-size:12px;color:#718096;margin-bottom:10px;';
+        ageNote.textContent = `Leeftijd gedetecteerd: ${age} jaar — passende calculators zijn gemarkeerd.`;
+        body.appendChild(ageNote);
+    }
+
+    // Calculators grouped by group label
+    const groups = {};
+    UPREVENT_CALCULATORS.forEach((c) => {
+        groups[c.group] = groups[c.group] || [];
+        groups[c.group].push(c);
+    });
+
+    const calcSection = document.createElement('div');
+    Object.entries(groups).forEach(([groupLabel, items]) => {
+        const groupTitle = document.createElement('div');
+        groupTitle.style.cssText = 'font-size:12px;font-weight:600;color:#718096;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px 0;';
+        groupTitle.textContent = groupLabel;
+        calcSection.appendChild(groupTitle);
+
+        const grid = document.createElement('div');
+        grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:6px;';
+        items.forEach((calc) => {
+            const fitsAge = age == null ? null : (age >= calc.ageMin && age <= calc.ageMax);
+            let matchesCategory = true;
+            if (calc.group === 'Eerdere HVZ') {
+                matchesCategory = !!episodeFlags?.hvz;
+            } else if (calc.group === 'Diabetes type 2') {
+                matchesCategory = !!episodeFlags?.dm2;
+            } else if (calc.group === 'Geen HVZ / geen DM2') {
+                matchesCategory = !episodeFlags?.hvz && !episodeFlags?.dm2;
+            }
+            const fits = fitsAge === null ? null : (fitsAge && matchesCategory);
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            const baseStyle = 'border-radius:8px;padding:10px 12px;font-size:13px;font-weight:500;cursor:pointer;text-align:left;transition:all 0.15s ease;background:#fff;color:#2d3748;';
+            const fitStyle = fits === true
+                ? 'border:2px solid #667eea;box-shadow:0 2px 6px rgba(102,126,234,0.15);'
+                : fits === false
+                    ? 'border:1px solid #e2e8f0;opacity:0.55;'
+                    : 'border:1px solid #cbd5e0;';
+            btn.style.cssText = baseStyle + fitStyle;
+            btn.innerHTML = `
+                <div style="font-weight:600;">${calc.label}</div>
+                <div style="font-size:11px;color:#718096;margin-top:2px;">${calc.ageMin}-${calc.ageMax} jr${calc.lifetime ? ' · lifetime' : ''}</div>
+            `;
+            btn.addEventListener('click', () => uprevent_handleCalculatorClick(calc, text, btn));
+            grid.appendChild(btn);
+        });
+        calcSection.appendChild(grid);
+    });
+    body.appendChild(calcSection);
+
+    // Footer with copy + cancel
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;justify-content:space-between;gap:8px;padding:14px 20px;border-top:1px solid #e2e8f0;background:#f7fafc;border-bottom-left-radius:12px;border-bottom-right-radius:12px;';
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.textContent = '📋 Kopieer naar klembord';
+    copyBtn.style.cssText = 'border:1px solid #cbd5e0;background:#fff;color:#2d3748;padding:8px 14px;border-radius:6px;font-size:13px;cursor:pointer;';
+    copyBtn.disabled = !text;
+    if (!text) copyBtn.style.opacity = '0.5';
+    copyBtn.addEventListener('click', async () => {
+        if (!text) return;
+        try {
+            await navigator.clipboard.writeText(text);
+            copyBtn.textContent = '✅ Gekopieerd';
+            setTimeout(() => uprevent_closeModal(), 700);
+        } catch (err) {
+            copyBtn.textContent = 'Kopiëren mislukt';
+            console.warn('CVRM kopieer-fout', err);
+        }
+    });
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Annuleren';
+    cancelBtn.style.cssText = 'border:none;background:transparent;color:#718096;padding:8px 14px;font-size:13px;cursor:pointer;';
+    cancelBtn.addEventListener('click', uprevent_closeModal);
+    footer.appendChild(copyBtn);
+    footer.appendChild(cancelBtn);
+    modal.appendChild(footer);
+
+    document.body.appendChild(overlay);
+    upreventModalEl = overlay;
+    document.addEventListener('keydown', uprevent_onKeyDown);
+
+    // Async: ping U-Prevent Infused via background.
+    chrome.runtime.sendMessage({ type: 'uprevent.ping' }, (resp) => {
+        const target = status.querySelector('.uprevent-status-text');
+        if (chrome.runtime.lastError || !resp) {
+            if (target) {
+                target.textContent = 'fout bij controle';
+                target.style.color = '#c53030';
+            }
+            return;
+        }
+        if (resp.installed) {
+            if (target) {
+                target.textContent = `gevonden${resp.version ? ' (v' + resp.version + ')' : ''}`;
+                target.style.color = '#2f855a';
+            }
+            // Calculator buttons keep their default click handler (auto-open).
+        } else {
+            if (target) {
+                target.textContent = 'niet gevonden';
+                target.style.color = '#c53030';
+            }
+            const installRow = document.createElement('div');
+            installRow.style.cssText = 'margin-left:auto;';
+            const installLink = resp.installUrl || 'https://dokterbart.nl/u-prevent-infused';
+            installRow.innerHTML = `<a href="${installLink}" target="_blank" rel="noopener" style="color:#667eea;font-size:13px;text-decoration:none;font-weight:500;">→ Installeer U-Prevent Infused</a>`;
+            status.appendChild(installRow);
+            // Mark calculator buttons as "open in tab only" mode.
+            modal.dataset.upreventInstalled = 'false';
+        }
+    });
+}
+
+function uprevent_handleCalculatorClick(calc, text, btn) {
+    const installed = upreventModalEl && upreventModalEl.querySelector('.uprevent-status-text')?.textContent.startsWith('gevonden');
+    if (installed) {
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<div style="font-weight:600;">${calc.label}</div><div style="font-size:11px;color:#718096;margin-top:2px;">openen&hellip;</div>`;
+        chrome.runtime.sendMessage({ type: 'uprevent.openAndFill', calculatorPath: calc.path, text: text || '' }, (resp) => {
+            if (chrome.runtime.lastError || !resp || !resp.ok) {
+                btn.disabled = false;
+                btn.innerHTML = original;
+                console.warn('U-Prevent openAndFill mislukt:', chrome.runtime.lastError || resp);
+                // Fallback: just open the URL in a new tab so the user isn't blocked.
+                window.open(`https://u-prevent.nl/calculators/${calc.path}`, '_blank', 'noopener');
+            } else {
+                uprevent_closeModal();
+            }
+        });
+    } else {
+        // Plugin not (yet) detected: open the calculator in a new tab so the
+        // user can paste the (already-on-clipboard if they hit Copy) text.
+        window.open(`https://u-prevent.nl/calculators/${calc.path}`, '_blank', 'noopener');
+    }
+}
+
+loadGlobalOptions(function (options) {
+    if (!options.uprevent) {
+        console.log('U-Prevent CVRM integratie disabled, observer niet gestart');
+        return;
+    }
+    const uprevent_observer = new MutationObserver(() => {
+        uprevent_addShortcut();
+    });
+    uprevent_observer.observe(document.body, { childList: true, subtree: true });
+    uprevent_addShortcut();
+});
+
+
 
