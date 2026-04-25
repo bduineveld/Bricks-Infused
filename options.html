@@ -317,6 +317,18 @@
       padding-right: 50px;
     }
 
+    .checkbox-item.has-expandable label {
+      flex: 0 0 auto;
+      display: inline-block;
+    }
+
+    .focus-highlight {
+      border-color: #667eea !important;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.25);
+      background: #eef2ff !important;
+      transition: box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+    }
+
     .expandable-item {
       background: #f7fafc;
       border-radius: 8px;
@@ -341,6 +353,11 @@
     .expandable-header .expand-toggle {
       position: static;
       transform: none;
+    }
+
+    .compact-checkbox-row label {
+      flex: 0 0 auto;
+      display: inline-block;
     }
 
     @media (max-width: 768px) {
@@ -415,7 +432,7 @@
               <label for="opt-medicijn">Opiaten en benzo's in medicatie authorisatielijst arceren</label>
             </div>
 
-            <div class="checkbox-item has-expandable">
+            <div class="checkbox-item has-expandable" id="comm-settings-item">
               <input type="checkbox" id="opt-knoppen">
               <label for="opt-knoppen">Communicatie adresboek snelkoppelingen</label>
               <button type="button" class="expand-toggle collapsed" data-target="comm-knoppen-section"></button>
@@ -427,10 +444,16 @@
               <button type="button" id="addBtnLabel" class="btn btn-secondary btn-small">Nieuwe knop toevoegen</button>
             </div>
       
-            <div class="checkbox-item has-expandable">
-              <input type="checkbox" id="opt-zorgdomein">
-              <label for="opt-zorgdomein">Zorgdomein snelkoppelingen</label>
-              <button type="button" class="expand-toggle collapsed" data-target="zorgdomein-section"></button>
+            <div class="checkbox-item has-expandable" id="zorgdomein-settings-item" style="display: block; padding-right: 50px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <input type="checkbox" id="opt-zorgdomein">
+                <label for="opt-zorgdomein">Zorgdomein snelkoppelingen</label>
+                <button type="button" class="expand-toggle collapsed" data-target="zorgdomein-section"></button>
+              </div>
+              <div class="compact-checkbox-row" style="display: flex; align-items: center; gap: 12px; margin-top: 10px; margin-left: 30px;">
+                <input type="checkbox" id="opt-zorgdomein-dashboard">
+                <label for="opt-zorgdomein-dashboard">Toon ook in het ZorgDomein dashboard</label>
+              </div>
             </div>
       
             <div class="expandable-section collapsed" id="zorgdomein-section">

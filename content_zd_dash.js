@@ -11,6 +11,10 @@ function isZorgdomeinDashboardView() {
 
 let isProcessing = false;
 let checkTimeout = null;
+let dashboardLinksRenderTimeout = null;
+let dashboardRenderRetryInterval = null;
+const DASHBOARD_LINKS_CONTAINER_ID = 'bricks-zd-dashboard-shortcuts';
+let lastKnownDashboardUrl = window.location.href;
 
 // Functie om de laatste geklikte link op te halen en actie uit te voeren
 function handleLastClickedLink() {
@@ -81,20 +85,244 @@ function performActionWithLink(linkUrl) {
     window.location.href = fullUrl;
 }
 
+function getDirectNaarDiagnostiekHeaderContainer() {
+    const headings = Array.from(document.querySelectorAll('zd-card h2'));
+    const targetHeading = headings.find((heading) => heading.textContent && heading.textContent.trim() === 'Direct naar diagnostiek');
+    if (!targetHeading) {
+        return null;
+    }
+
+    const cardHeaderContainer = targetHeading.closest('.card__header-container');
+    return cardHeaderContainer || null;
+}
+
+function buildZorgdomeinUrl(linkPath) {
+    if (!linkPath) {
+        return null;
+    }
+    if (linkPath.startsWith('http://') || linkPath.startsWith('https://')) {
+        return linkPath;
+    }
+    return 'https://www.zorgdomein.nl' + (linkPath.startsWith('/') ? linkPath : '/' + linkPath);
+}
+
+function removeDashboardShortcutLinks() {
+    const existing = document.getElementById(DASHBOARD_LINKS_CONTAINER_ID);
+    if (existing && existing.parentNode) {
+        existing.parentNode.removeChild(existing);
+    }
+}
+
+function openBricksInfusedOptionsPage() {
+    try {
+        chrome.runtime.sendMessage({ type: 'openOptionsPage', focusTarget: 'zorgdomein' });
+    } catch (error) {
+        console.error('Kon optiespagina niet openen:', error);
+    }
+}
+
+function renderDashboardShortcutLinks() {
+    if (!isZorgdomeinDashboardView()) {
+        return;
+    }
+
+    chrome.storage.sync.get(['zorgdomeinDashboardLinks', 'zorgdomeinSnelkoppelingen', 'zorgdomeinLinks'], (result) => {
+        const dashboardEnabled = result.zorgdomeinDashboardLinks !== false;
+        const shortcutsEnabled = result.zorgdomeinSnelkoppelingen !== false;
+        const links = (result.zorgdomeinLinks || [])
+            .filter((link) => link && link.name)
+            .map((link) => ({ name: link.name, href: buildZorgdomeinUrl(link.link) }))
+            .filter((link) => !!link.href);
+
+        removeDashboardShortcutLinks();
+
+        if (!dashboardEnabled || !shortcutsEnabled || links.length === 0) {
+            return;
+        }
+
+        const headerContainer = getDirectNaarDiagnostiekHeaderContainer();
+        if (!headerContainer) {
+            console.log('Dashboard card header not found yet, retry will continue');
+            return;
+        }
+
+        const linksContainer = document.createElement('div');
+        linksContainer.id = DASHBOARD_LINKS_CONTAINER_ID;
+        linksContainer.style.margin = '6px 0 0 0';
+        linksContainer.style.fontSize = '14px';
+        linksContainer.style.lineHeight = '1.4';
+        linksContainer.style.display = 'flex';
+        linksContainer.style.alignItems = 'center';
+        linksContainer.style.gap = '8px';
+
+        const logo = document.createElement('img');
+        logo.src = chrome.runtime.getURL('bricks-infused.svg');
+        logo.alt = 'Bricks Infused';
+        logo.style.width = '16px';
+        logo.style.height = '16px';
+        logo.style.flex = '0 0 auto';
+        linksContainer.appendChild(logo);
+
+        const textLinks = document.createElement('span');
+        textLinks.style.display = 'inline-block';
+
+        links.forEach((link, index) => {
+            const anchor = document.createElement('a');
+            anchor.href = link.href;
+            anchor.textContent = link.name;
+            anchor.style.textDecoration = 'underline';
+            anchor.style.cursor = 'pointer';
+            textLinks.appendChild(anchor);
+
+            if (index < links.length - 1) {
+                textLinks.appendChild(document.createTextNode(' | '));
+            }
+        });
+
+        if (!textLinks.childNodes.length) {
+            return;
+        }
+        linksContainer.appendChild(textLinks);
+
+        const settingsButton = document.createElement('button');
+        settingsButton.type = 'button';
+        settingsButton.title = 'Open Bricks Infused instellingen';
+        settingsButton.textContent = '⚙️';
+        settingsButton.style.border = 'none';
+        settingsButton.style.background = 'transparent';
+        settingsButton.style.cursor = 'pointer';
+        settingsButton.style.padding = '0';
+        settingsButton.style.fontSize = '15px';
+        settingsButton.style.lineHeight = '1';
+        settingsButton.style.flex = '0 0 auto';
+        settingsButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openBricksInfusedOptionsPage();
+        });
+        linksContainer.appendChild(settingsButton);
+
+        headerContainer.appendChild(linksContainer);
+        stopDashboardRenderRetryLoop();
+    });
+}
+
+function debouncedRenderDashboardShortcutLinks() {
+    if (!isZorgdomeinDashboardView()) {
+        return;
+    }
+    if (dashboardLinksRenderTimeout) {
+        clearTimeout(dashboardLinksRenderTimeout);
+    }
+    dashboardLinksRenderTimeout = setTimeout(renderDashboardShortcutLinks, 250);
+}
+
+function startDashboardRenderRetryLoop() {
+    if (!isZorgdomeinDashboardView()) {
+        return;
+    }
+    if (dashboardRenderRetryInterval) {
+        return;
+    }
+
+    const startTs = Date.now();
+    dashboardRenderRetryInterval = setInterval(() => {
+        // Stop na 30s om onnodig werk te voorkomen.
+        if (Date.now() - startTs > 30000) {
+            stopDashboardRenderRetryLoop();
+            return;
+        }
+        renderDashboardShortcutLinks();
+    }, 1000);
+}
+
+function stopDashboardRenderRetryLoop() {
+    if (!dashboardRenderRetryInterval) {
+        return;
+    }
+    clearInterval(dashboardRenderRetryInterval);
+    dashboardRenderRetryInterval = null;
+}
+
+function handleDashboardRouteOrVisibilityChange() {
+    if (!isZorgdomeinDashboardView()) {
+        stopDashboardRenderRetryLoop();
+        return;
+    }
+    renderDashboardShortcutLinks();
+    startDashboardRenderRetryLoop();
+    debouncedHandleLastClickedLink();
+}
+
+function installDashboardNavigationListeners() {
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+
+    history.pushState = function () {
+        const result = originalPushState.apply(this, arguments);
+        queueMicrotask(handleDashboardRouteOrVisibilityChange);
+        return result;
+    };
+    history.replaceState = function () {
+        const result = originalReplaceState.apply(this, arguments);
+        queueMicrotask(handleDashboardRouteOrVisibilityChange);
+        return result;
+    };
+
+    window.addEventListener('popstate', handleDashboardRouteOrVisibilityChange);
+    window.addEventListener('pageshow', handleDashboardRouteOrVisibilityChange);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            handleDashboardRouteOrVisibilityChange();
+        }
+    });
+
+    // Extra vangnet voor SPA's die history niet gebruiken zoals verwacht.
+    setInterval(() => {
+        const currentUrl = window.location.href;
+        if (currentUrl === lastKnownDashboardUrl) {
+            return;
+        }
+        lastKnownDashboardUrl = currentUrl;
+        handleDashboardRouteOrVisibilityChange();
+    }, 500);
+}
+
 // Wacht tot de pagina volledig geladen is
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => { if (isZorgdomeinDashboardView()) handleLastClickedLink(); }, 2000);
+        setTimeout(() => {
+            if (isZorgdomeinDashboardView()) {
+                renderDashboardShortcutLinks();
+                startDashboardRenderRetryLoop();
+            }
+        }, 2000);
     });
 } else {
     setTimeout(() => { if (isZorgdomeinDashboardView()) handleLastClickedLink(); }, 2000);
+    setTimeout(() => {
+        if (isZorgdomeinDashboardView()) {
+            renderDashboardShortcutLinks();
+            startDashboardRenderRetryLoop();
+        }
+    }, 2000);
 }
+
+installDashboardNavigationListeners();
 
 // Ook luisteren naar storage changes voor real-time updates (maar debounced)
 chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'sync' && changes.lastClickedLink) {
+    if (namespace !== 'sync') {
+        return;
+    }
+    if (changes.lastClickedLink) {
         console.log('Storage changed, new link detected:', changes.lastClickedLink.newValue);
         debouncedHandleLastClickedLink();
+    }
+    if (changes.zorgdomeinDashboardLinks || changes.zorgdomeinLinks || changes.zorgdomeinSnelkoppelingen) {
+        debouncedRenderDashboardShortcutLinks();
+        startDashboardRenderRetryLoop();
     }
 });
 
@@ -103,19 +331,16 @@ const observer = new MutationObserver((mutations) => {
     if (!isZorgdomeinDashboardView()) {
         return;
     }
-    // Alleen checken bij significante changes, niet bij elke kleine wijziging
-    const hasSignificantChanges = mutations.some(mutation => 
-        mutation.type === 'childList' && 
-        mutation.addedNodes.length > 0 &&
-        Array.from(mutation.addedNodes).some(node => 
-            node.nodeType === Node.ELEMENT_NODE && 
-            (node.tagName === 'FORM' || node.tagName === 'INPUT' || node.tagName === 'BUTTON')
-        )
+    // Dashboard content laadt vaak asynchroon; elke childList toevoeging kan relevant zijn.
+    const hasSignificantChanges = mutations.some((mutation) =>
+        mutation.type === 'childList' && mutation.addedNodes.length > 0
     );
     
     if (hasSignificantChanges) {
         console.log('Significant DOM changes detected, checking for links');
         debouncedHandleLastClickedLink();
+        debouncedRenderDashboardShortcutLinks();
+        startDashboardRenderRetryLoop();
     }
 });
 

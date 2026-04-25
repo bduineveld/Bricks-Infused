@@ -152,6 +152,47 @@ function setupListDragContainer(listId, rowClass) {
 document.addEventListener('DOMContentLoaded', () => {
   console.log("Options page loaded");
   
+  function expandSectionByTarget(targetId) {
+    const section = document.getElementById(targetId);
+    const toggle = document.querySelector(`[data-target="${targetId}"]`);
+    if (section) {
+      section.classList.remove('collapsed');
+      section.classList.add('expanded');
+    }
+    if (toggle) {
+      toggle.classList.remove('collapsed');
+      toggle.classList.add('expanded');
+    }
+  }
+
+  function applyFocusHighlight(focusTarget) {
+    const focusMap = {
+      communicatie: { itemId: 'comm-settings-item', sectionId: 'comm-knoppen-section' },
+      zorgdomein: { itemId: 'zorgdomein-settings-item', sectionId: 'zorgdomein-section' }
+    };
+    const conf = focusMap[focusTarget];
+    if (!conf) return;
+    const item = document.getElementById(conf.itemId);
+    if (!item) return;
+
+    expandSectionByTarget(conf.sectionId);
+    item.classList.add('focus-highlight');
+    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => item.classList.remove('focus-highlight'), 3000);
+  }
+
+  const queryFocusTarget = new URLSearchParams(window.location.search).get('focus');
+  if (queryFocusTarget) {
+    applyFocusHighlight(queryFocusTarget);
+  } else if (chrome && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(['optionsFocusTarget'], (result) => {
+      const focusTarget = result.optionsFocusTarget;
+      if (!focusTarget) return;
+      chrome.storage.local.remove('optionsFocusTarget');
+      applyFocusHighlight(focusTarget);
+    });
+  }
+  
   // Uitklapbare secties functionaliteit
   console.log('🔧 DOM loaded, initializing expandable sections...');
   
@@ -200,6 +241,26 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('🖱️ Toggle clicked:', this);
       const targetId = this.getAttribute('data-target');
       toggleSection(targetId, this);
+    });
+  });
+
+  // Klik op het grijze blok (checkbox-item.has-expandable) klapt ook uit/in.
+  // Uitzondering: klik op checkbox, label of pijltje behoudt het normale gedrag.
+  const expandableCheckboxItems = document.querySelectorAll('.checkbox-item.has-expandable');
+  expandableCheckboxItems.forEach((item) => {
+    const toggle = item.querySelector('.expand-toggle');
+    if (!toggle) return;
+    const targetId = toggle.getAttribute('data-target');
+    if (!targetId) return;
+
+    item.addEventListener('click', function(e) {
+      if (e.target.closest('.expand-toggle') || e.target.closest('input') || e.target.closest('label')) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('🖱️ Expandable checkbox-item clicked:', targetId);
+      toggleSection(targetId, toggle);
     });
   });
   
@@ -304,6 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('opt-medicijn').checked = data.medicijnMarkeringen !== false;
     document.getElementById('opt-pdf-export').checked = data.pdfExport !== false;
     document.getElementById('opt-zorgdomein').checked = data.zorgdomeinSnelkoppelingen !== false;
+    document.getElementById('opt-zorgdomein-dashboard').checked = data.zorgdomeinDashboardLinks !== false;
     // Alleen renderen als er data bestaat
     if (data.btnLabels && data.btnLabels.length > 0) {
       console.log("btnLabels to render:", data.btnLabels);
@@ -327,9 +389,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const medicijnMarkeringen = document.getElementById('opt-medicijn').checked;
     const pdfExport = document.getElementById('opt-pdf-export').checked;
     const zorgdomeinSnelkoppelingen = document.getElementById('opt-zorgdomein').checked;
+    const zorgdomeinDashboardLinks = document.getElementById('opt-zorgdomein-dashboard').checked;
     const btnLabels = collectBtnLabels();
     const zorgdomeinLinks = collectZorgdomeinLinks();
-    setStorage({ klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, medicijnMarkeringen, pdfExport, zorgdomeinSnelkoppelingen, btnLabels, zorgdomeinLinks }, () => {
+    setStorage({ klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, medicijnMarkeringen, pdfExport, zorgdomeinSnelkoppelingen, zorgdomeinDashboardLinks, btnLabels, zorgdomeinLinks }, () => {
       document.getElementById('status').textContent = 'Opgeslagen!';
       setTimeout(() => document.getElementById('status').textContent = '', 1500);
     });

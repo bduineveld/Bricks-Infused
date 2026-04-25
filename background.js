@@ -8,6 +8,7 @@ const defaultOptions = {
   medicijnMarkeringen: true,
   pdfExport: true,
   zorgdomeinSnelkoppelingen: true,
+  zorgdomeinDashboardLinks: true,
   btnLabels: [],
   zorgdomeinLinks: []
 };
@@ -28,8 +29,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message && message.type === 'openOptionsPage') {
-    if (chrome.runtime.openOptionsPage) {
-      chrome.runtime.openOptionsPage();
+    const openOptions = () => {
+      if (chrome.runtime.openOptionsPage) {
+        chrome.runtime.openOptionsPage();
+      }
+    };
+    if (message.focusTarget && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ optionsFocusTarget: message.focusTarget }, () => {
+        openOptions();
+      });
+    } else {
+      openOptions();
     }
     sendResponse({ ok: true });
     return true;

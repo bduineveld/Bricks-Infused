@@ -954,7 +954,7 @@ function communicatie_add_contact_button(type) {
 // Open de extensie-optiespagina
 function communicatie_openOptions() {
 	try {
-		chrome.runtime.sendMessage({ type: 'openOptionsPage' });
+		chrome.runtime.sendMessage({ type: 'openOptionsPage', focusTarget: 'communicatie' });
 	} catch (e) {
 		console.error('Kon opties niet openen:', e);
 	}
@@ -2240,7 +2240,7 @@ function zorgdomein_addLabformOption() {
                 console.log(`${link.name} settings clicked`);
                 
                 // Open plugin settings page
-                chrome.runtime.sendMessage({ type: 'openOptionsPage' });
+                chrome.runtime.sendMessage({ type: 'openOptionsPage', focusTarget: 'zorgdomein' });
             });
             
             optionCaption.appendChild(optionText);
