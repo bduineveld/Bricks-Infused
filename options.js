@@ -50,6 +50,31 @@ function setStorage(data, cb) {
   }
 }
 
+function updateUpreventInstallStatus() {
+  const installedEl = document.getElementById('uprevent-installed-msg');
+  const missingBlock = document.getElementById('uprevent-missing-block');
+  const installLink = document.getElementById('uprevent-install-link');
+  if (!installedEl || !missingBlock) return;
+
+  if (!chrome?.runtime?.sendMessage) {
+    missingBlock.style.display = 'block';
+    return;
+  }
+
+  chrome.runtime.sendMessage({ type: 'uprevent.ping' }, (resp) => {
+    if (chrome.runtime.lastError || !resp || !resp.installed) {
+      installedEl.style.display = 'none';
+      missingBlock.style.display = 'block';
+      if (installLink && resp?.installUrl) installLink.href = resp.installUrl;
+      return;
+    }
+    const versionSuffix = resp.version ? ` (v${resp.version})` : '';
+    installedEl.textContent = `U-Prevent Infused is geïnstalleerd${versionSuffix}.`;
+    installedEl.style.display = 'block';
+    missingBlock.style.display = 'none';
+  });
+}
+
 // Drag & drop helpers
 let dragPlaceholder = null;
 function getDragPlaceholder(containerId) {
@@ -151,6 +176,7 @@ function setupListDragContainer(listId, rowClass) {
 
 document.addEventListener('DOMContentLoaded', () => {
   console.log("Options page loaded");
+  updateUpreventInstallStatus();
   
   function expandSectionByTarget(targetId) {
     const section = document.getElementById(targetId);

@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Bricks Infused",
   "description": "Voegt nieuwe functionaliteiten toe aan Bricks Huisarts.",
-  "version": "1.18.0",
-  "version_name": "v1.18.0 26-04-2026",
+  "version": "1.19.0",
+  "version_name": "v1.19.0 16-05-2026",
   "author": "Dokter Bart",
   "homepage_url": "https://dokterbart.nl/",
   "icons": {

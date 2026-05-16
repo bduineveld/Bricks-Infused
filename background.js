@@ -27,10 +27,11 @@ const defaultOptions = {
 // (For stable IDs across re-installs, add a "key" field to each manifest.)
 // =============================================================================
 const UPREVENT_EXT_IDS = [
-  "coeioggedoondkpdoccbncgbbgboedkp" // U-Prevent Infused dev ID
-  // Add store IDs here when published (Chrome/Edge can differ).
+  "pmlakmbpemkfccbhkdmcofagpipfchio", // U-Prevent Infused — Microsoft Edge Add-ons
+  "coeioggedoondkpdoccbncgbbgboedkp"  // dev (unpacked)
 ];
-const UPREVENT_INSTALL_URL = "https://dokterbart.nl/u-prevent-infused"; // placeholder install link
+const UPREVENT_INSTALL_URL =
+  "https://microsoftedge.microsoft.com/addons/detail/uprevent-infused/pmlakmbpemkfccbhkdmcofagpipfchio";
 
 let pendingResizerPercentages = {};
 let resizerSaveTimer = null;

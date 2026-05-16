@@ -2959,7 +2959,7 @@ function uprevent_showPicker(text, age, episodeFlags) {
             }
             const installRow = document.createElement('div');
             installRow.style.cssText = 'margin-left:auto;';
-            const installLink = resp.installUrl || 'https://dokterbart.nl/u-prevent-infused';
+            const installLink = resp.installUrl || 'https://microsoftedge.microsoft.com/addons/detail/uprevent-infused/pmlakmbpemkfccbhkdmcofagpipfchio';
             installRow.innerHTML = `<a href="${installLink}" target="_blank" rel="noopener" style="color:#667eea;font-size:13px;text-decoration:none;font-weight:500;">→ Installeer U-Prevent Infused</a>`;
             status.appendChild(installRow);
             // Mark calculator buttons as "open in tab only" mode.
