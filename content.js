@@ -2336,7 +2336,7 @@ detectAndSaveKlantnummer();
 
 
 ///////////////////////////////// U-PREVENT CVRM INTEGRATIE //////////////////////////////////////////////////////////////
-// Adds a "CVRM" shortcut to the patient shortcutsbar. On click, scrapes the
+// Adds a "U-PRE" shortcut to the patient shortcutsbar. On click, scrapes the
 // most recent CVRM-relevant journaal entries (sys/dia BP for now) and lets
 // the user either send the text to the U-Prevent Infused extension (which
 // opens the chosen calculator and prefills it) or copy it to the clipboard.
@@ -2357,20 +2357,20 @@ const UPREVENT_CALCULATORS = [
 function uprevent_addShortcut() {
     const bar = document.querySelector('.side-controls .shortcutsbar');
     if (!bar) return;
-    if (bar.querySelector('[data-shortcut="CVRM"]')) return;
+    if (bar.querySelector('[data-shortcut="U-PRE"]')) return;
 
     const shortcut = document.createElement('div');
     shortcut.className = 'shortcut';
     shortcut.title = 'U-Prevent integratie';
-    shortcut.setAttribute('data-shortcut', 'CVRM');
-    shortcut.innerHTML = '<div class="caption" style="border-color: rgb(120, 100, 200);">CVRM</div>';
+    shortcut.setAttribute('data-shortcut', 'U-PRE');
+    shortcut.innerHTML = '<div class="caption" style="border-color: rgb(120, 100, 200);">U-PRE</div>';
     shortcut.addEventListener('click', uprevent_onClick);
     bar.appendChild(shortcut);
-    console.log('CVRM shortcut toegevoegd aan shortcutsbar');
+    console.log('U-PRE shortcut toegevoegd aan shortcutsbar');
 }
 
 function uprevent_removeShortcut() {
-    document.querySelectorAll('.side-controls .shortcutsbar [data-shortcut="CVRM"]').forEach((n) => n.remove());
+    document.querySelectorAll('.side-controls .shortcutsbar [data-shortcut="U-PRE"]').forEach((n) => n.remove());
 }
 
 // --- Patiëntheader (Bricks patient-header2-left) --------------------------------

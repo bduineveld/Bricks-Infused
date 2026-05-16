@@ -28,7 +28,8 @@ const defaultOptions = {
 // =============================================================================
 const UPREVENT_EXT_IDS = [
   "pmlakmbpemkfccbhkdmcofagpipfchio", // U-Prevent Infused — Microsoft Edge Add-ons
-  "coeioggedoondkpdoccbncgbbgboedkp"  // dev (unpacked)
+  "gjeikimildjhncdfbagbingnnpfmmgdn", // dev (unpacked, huidige PC)
+  "coeioggedoondkpdoccbncgbbgboedkp"  // dev (unpacked, oud)
 ];
 const UPREVENT_INSTALL_URL =
   "https://microsoftedge.microsoft.com/addons/detail/uprevent-infused/pmlakmbpemkfccbhkdmcofagpipfchio";
