@@ -481,16 +481,23 @@
 
             <div class="checkbox-item has-expandable" id="uprevent-settings-item">
               <input type="checkbox" id="opt-uprevent">
-              <label for="opt-uprevent">U-Prevent CVRM integratie <span style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(CVRM-knop in patiëntdossier)</span></label>
+              <label for="opt-uprevent">U-Prevent risicocalculatoren <span style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(U-PRE-knop in patiëntdossier)</span></label>
               <button type="button" class="expand-toggle collapsed" data-target="uprevent-section"></button>
             </div>
 
             <div class="expandable-section collapsed" id="uprevent-section">
               <div style="background: #f7fafc; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #667eea;">
                 <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 14px; line-height: 1.5;">
-                  Voegt een <strong>CVRM</strong> snelkoppeling toe in de patiëntbalk. Bij klik wordt relevante CVRM-data
-                  uit het journaal verzameld (o.a. laatste systolische / diastolische bloeddruk) en kun je die direct
-                  doorzetten naar een U-Prevent calculator (via <em>U-Prevent Infused</em>) of naar het klembord kopiëren.
+                  Voegt een <strong>U-PRE</strong> snelkoppeling toe in de patiëntbalk. Bij klik verzamelt Bricks
+                  relevante dossier-data — leeftijd, geslacht, bloeddruk, lipiden (totaal/HDL/LDL/non-HDL/triglyceriden),
+                  HbA1c, eGFR, creatinine, BMI / lengte / gewicht, ACR / microalbuminurie, episoden (HVZ, DM2,
+                  hartfalen, atriumfibrilleren) en chronische medicatie — en stuurt die naar een U-Prevent
+                  risicocalculator naar keuze (SCORE2, SCORE2-OP, SCORE2-Diabetes, SMART2, SMART-REACH, DIAL2,
+                  LIFE-CVD2) via de <em>U-Prevent Infused</em> plugin. Alternatief: klembord-kopie.
+                </p>
+                <p style="margin: 0 0 8px 0; color: #718096; font-size: 12px; line-height: 1.5;">
+                  De data wordt uitsluitend via cross-extension messaging naar U-Prevent Infused gestuurd en gaat
+                  niet over het netwerk. De overdracht vindt alleen plaats bij een klik op de U-PRE-knop.
                 </p>
                 <p id="uprevent-installed-msg" style="display: none; margin: 12px 0 0 0; color: #2f855a; font-size: 13px; line-height: 1.5; font-weight: 500;"></p>
                 <div id="uprevent-missing-block" style="display: none;">

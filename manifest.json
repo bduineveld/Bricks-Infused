@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
+  "key": "MD8BIjANCgYJKj9IPz8NCgEBAQUAAz8BDwAwPwENCgI/AQEAP2s/PxA/Pz8/Pz8GeykCGz9NP145Pz95Pz8/IT8/Pz8/CT8OPz8/P0hCP08tKj8uPxIBST8/fT9zMQN0M1g/aj8/PwVSP3s/Fz8FPz8/PzQ/Zj8/Pz9YP3Q/Pzc/bWI/Yj8eez8/Pz9iM2YuDm5eUz94P2VXPxw/LD8NCj8/MD8/Pz8/Pz8/P29EPz9HID8qBj9PEQwLPz9iSz8RP1Y6JD8/Dz8/Pz8fP08/VD84cT9rPx0/Pz8/Pz8eYj8/Pz8/Pz8/Pz81LD8/QT8/XFtNP2E4Bj95cT8pJD8fPz8/P1UHPz8/Pz8/YD8/P3c/PyJdPz8/I0M/Pz8/Pz9ePXs/PwsCAwEAAQ0K",
   "name": "Bricks Infused",
   "description": "Voegt nieuwe functionaliteiten toe aan Bricks Huisarts.",
-  "version": "1.19.0",
-  "version_name": "v1.19.0 16-05-2026",
+  "version": "1.20.0",
+  "version_name": "v1.20.0 20-05-2026",
   "author": "Dokter Bart",
   "homepage_url": "https://dokterbart.nl/",
   "icons": {
@@ -28,7 +29,7 @@
       "matches": [
         "https://brickshuisarts.nl/*/*"
       ],
-      "js": ["lib/jspdf.umd.min.js", "content.js"],
+      "js": ["lib/jspdf.umd.min.js", "content.js", "content_uprevent.js"],
       "run_at": "document_end"
     },
     {

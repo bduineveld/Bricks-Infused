@@ -1,6 +1,11 @@
 // Content script voor Zorgdomein pagina's
 // Dit script wordt uitgevoerd op verschillende Zorgdomein URL's
 
+const BRICKS_DEBUG = false;
+if (!BRICKS_DEBUG && typeof console !== 'undefined') {
+    console.log = function () { /* no-op (BRICKS_DEBUG=false) */ };
+}
+
 console.log('Zorgdomein common functions loaded');
 console.log('Current URL:', window.location.href);
 console.log('Script loaded at:', new Date().toISOString());

@@ -2,6 +2,11 @@
 // Dit script wordt uitgevoerd op https://www.zorgdomein.nl/dashboard
 // (bij client-side navigatie blijft dit script in het tabblad; daarom: alleen actief op /dashboard)
 
+const BRICKS_DEBUG = false;
+if (!BRICKS_DEBUG && typeof console !== 'undefined') {
+    console.log = function () { /* no-op (BRICKS_DEBUG=false) */ };
+}
+
 console.log('Zorgdomein content script loaded');
 
 function isZorgdomeinDashboardView() {

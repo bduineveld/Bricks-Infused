@@ -15,22 +15,31 @@ const defaultOptions = {
 };
 
 // =============================================================================
-// U-Prevent Infused bridge wiring (see also: U-Prevent Infused/README.md).
+// U-Prevent Infused bridge wiring (zie ook manifest.ids.md in beide mappen).
 // -----------------------------------------------------------------------------
-// 1. Load both extensions in chrome://extensions (developer mode, unpacked).
-// 2. Copy the ID shown for "U-Prevent Infused" and paste it into
-//    UPREVENT_EXT_IDS below.
-// 3. Copy the ID shown for "Bricks Infused" and paste it into the
-//    "externally_connectable.ids" array in U-Prevent Infused/manifest.json
-//    (replacing BRICKS_INFUSED_EXTENSION_ID_PLACEHOLDER).
-// 4. Reload both extensions.
-// (For stable IDs across re-installs, add a "key" field to each manifest.)
+// Extensie-ID's (JSON-manifests ondersteunen geen comments — zie manifest.ids.md):
+//
+//   Bricks Infused (deze extensie):
+//     mogkemhemedhcmoopdlfdjklgjlhgmnp  — dev (unpacked + key in manifest.json)
+//     ebannlcfcakhaekmbeogkphbijghepbe  — Edge store
+//
+//   U-Prevent Infused (doel van messaging hieronder):
+//     hdneeeaikfhphigcmjcfppkclpoglhfb  — dev → UPREVENT_EXT_IDS_DEV
+//     pmlakmbpemkfccbhkdmcofagpipfchio  — store → UPREVENT_EXT_IDS_PROD
+//
+// U-Prevent whitelist voor Bricks: manifest.json → externally_connectable.ids
+//
+// Vóór Edge store-upload Bricks: UPREVENT_EXT_IDS_DEV = []
 // =============================================================================
-const UPREVENT_EXT_IDS = [
-  "pmlakmbpemkfccbhkdmcofagpipfchio", // U-Prevent Infused — Microsoft Edge Add-ons
-  "gjeikimildjhncdfbagbingnnpfmmgdn", // dev (unpacked, huidige PC)
-  "coeioggedoondkpdoccbncgbbgboedkp"  // dev (unpacked, oud)
+const UPREVENT_EXT_IDS_PROD = [
+  "pmlakmbpemkfccbhkdmcofagpipfchio" // U-Prevent Infused — Edge store
 ];
+// === DEV-ONLY: maak deze array leeg (`[]`) vóór upload naar de Edge store ===
+const UPREVENT_EXT_IDS_DEV = [
+  "hdneeeaikfhphigcmjcfppkclpoglhfb" // U-Prevent Infused — dev (key in manifest)
+];
+// ============================================================================
+const UPREVENT_EXT_IDS = [...UPREVENT_EXT_IDS_PROD, ...UPREVENT_EXT_IDS_DEV];
 const UPREVENT_INSTALL_URL =
   "https://microsoftedge.microsoft.com/addons/detail/uprevent-infused/pmlakmbpemkfccbhkdmcofagpipfchio";
 
@@ -171,7 +180,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   
-  ///////////////////////////////// U-PREVENT CVRM INTEGRATIE //////////////////////////////////////////////////////////////
+  ///////////////////////////////// U-PREVENT INTEGRATIE //////////////////////////////////////////////////////////////
   // Ping U-Prevent Infused to check if it is installed and reachable.
   if (message && message.type === 'uprevent.ping') {
     if (!UPREVENT_EXT_IDS.length) {
@@ -220,30 +229,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // TEST FUNCTIES - MAKKELIJK TE VERWIJDEREN
-  if (message && message.type === 'getSecretFromDokterBart') {
-    // Haal tekst op uit dokterbart.nl/secret.txt
-    fetch('https://dokterbart.nl/secret.txt', {
-      method: 'GET',
-      mode: 'cors',
-      headers: {
-        'Accept': 'text/plain',
-        'Content-Type': 'text/plain'
-      }
-    }).then(response => {
-      console.log('Response status:', response.status);
-      if (response.ok) {
-        return response.text();
-      } else {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-    }).then(text => {
-      console.log('Geheime tekst opgehaald uit dokterbart.nl/secret.txt:', text);
-      sendResponse({ success: true, text: text });
-    }).catch((error) => {
-      console.log('Fout bij ophalen geheime tekst:', error);
-      sendResponse({ success: false, error: error.message });
-    });
-    return true;
-  }
 });
