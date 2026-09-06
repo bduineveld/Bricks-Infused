@@ -21,7 +21,10 @@
     trackedPatientId: -1,
     trackedContactId: -1,
     assignHooked: false,
-    hisRegieWrapped: false
+    hisRegieWrapped: false,
+    mapHooked: false,
+    layoutResizeExecute: null,
+    eventTrigger: null
   };
 
   function log() {
@@ -92,6 +95,116 @@
     return true;
   }
 
+  function rememberLayoutResizeCommand(entry) {
+    if (!entry) return;
+    if (typeof entry.execute === 'function') {
+      state.layoutResizeExecute = entry.execute.bind(entry);
+    } else if (typeof entry === 'function') {
+      state.layoutResizeExecute = entry;
+    }
+  }
+
+  function rememberEventBus(candidate) {
+    if (
+      candidate &&
+      typeof candidate.trigger === 'function' &&
+      typeof candidate.subscribe === 'function'
+    ) {
+      state.eventTrigger = candidate.trigger.bind(candidate);
+    }
+  }
+
+  function installMapHook() {
+    if (state.mapHooked) return;
+    state.mapHooked = true;
+    const origSet = Map.prototype.set;
+    Map.prototype.set = function patchedMapSet(key, value) {
+      try {
+        if (key === 'layout.resize.toggle') {
+          rememberLayoutResizeCommand(value);
+        }
+        if (
+          value &&
+          typeof value === 'object' &&
+          value.id === 'layout.resize.toggle'
+        ) {
+          rememberLayoutResizeCommand(value);
+        }
+        if (
+          value &&
+          typeof value === 'object' &&
+          typeof value.trigger === 'function' &&
+          typeof value.subscribe === 'function'
+        ) {
+          rememberEventBus(value);
+        }
+      } catch (e) { /* ignore */ }
+      return origSet.call(this, key, value);
+    };
+  }
+
+  function isResizeActive() {
+    return !!document.querySelector('.layout-renderer.resize-active');
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function dispatchKey(partial) {
+    const init = Object.assign(
+      {
+        bubbles: true,
+        cancelable: true,
+        composed: true
+      },
+      partial
+    );
+    document.dispatchEvent(new KeyboardEvent('keydown', init));
+  }
+
+  /**
+   * Fallback: CTRL+SPACE opent sneltoetsenpalette, H = hoofdmenu, L = widget aanpassen.
+   */
+  async function toggleLayoutResizeViaKeyChord() {
+    const before = isResizeActive();
+    dispatchKey({ key: ' ', code: 'Space', ctrlKey: true, keyCode: 32, which: 32 });
+    await sleep(60);
+    dispatchKey({ key: 'h', code: 'KeyH', keyCode: 72, which: 72 });
+    await sleep(60);
+    dispatchKey({ key: 'l', code: 'KeyL', keyCode: 76, which: 76 });
+    await sleep(120);
+    return {
+      ok: true,
+      mode: 'keychord',
+      resizeActive: isResizeActive(),
+      toggled: before !== isResizeActive()
+    };
+  }
+
+  async function toggleLayoutResize() {
+    const before = isResizeActive();
+    if (typeof state.layoutResizeExecute === 'function') {
+      state.layoutResizeExecute();
+      return {
+        ok: true,
+        mode: 'command',
+        resizeActive: isResizeActive(),
+        toggled: before !== isResizeActive()
+      };
+    }
+    if (typeof state.eventTrigger === 'function') {
+      state.eventTrigger(before ? 'widgets.resize.stop' : 'widgets.resize.start');
+      return {
+        ok: true,
+        mode: 'event-bus',
+        resizeActive: isResizeActive(),
+        toggled: before !== isResizeActive()
+      };
+    }
+    return toggleLayoutResizeViaKeyChord();
+  }
+
   function installAssignHook() {
     if (state.assignHooked) return;
     state.assignHooked = true;
@@ -110,6 +223,7 @@
           ) {
             captureB(target);
           }
+          rememberEventBus(src);
         }
         if (
           target &&
@@ -119,6 +233,7 @@
         ) {
           captureB(target);
         }
+        rememberEventBus(target);
       } catch (e) { /* ignore */ }
       return result;
     };
@@ -306,7 +421,10 @@
           hasB: !!state.B,
           hisRegieWrapped: state.hisRegieWrapped,
           context: getActiveContext(),
-          hasRouter: !!getVueRouter()
+          hasRouter: !!getVueRouter(),
+          hasLayoutResizeCommand: typeof state.layoutResizeExecute === 'function',
+          hasEventTrigger: typeof state.eventTrigger === 'function',
+          resizeActive: isResizeActive()
         };
       case 'getActiveContext':
         return getActiveContext();
@@ -314,6 +432,8 @@
         return navigate(args.to);
       case 'doApi':
         return doApi(args.service, args.method, args.params, args.ignoreBusy);
+      case 'toggleLayoutResize':
+        return toggleLayoutResize();
       case 'startZorgdomeinVerwijzing':
         return startZorgdomeinVerwijzing(args);
       case 'takenNew':
@@ -360,16 +480,21 @@
       .catch((err) => reply(id, false, err && err.message ? err : { message: String(err) }));
   });
 
+  installMapHook();
   installAssignHook();
 
   window.__bricksInfusedMain = {
     __installed: true,
     getB: () => state.B,
     getActiveContext,
+    toggleLayoutResize,
+    isResizeActive,
     getStatus: () => ({
       hasB: !!state.B,
       context: getActiveContext(),
-      hasRouter: !!getVueRouter()
+      hasRouter: !!getVueRouter(),
+      hasLayoutResizeCommand: typeof state.layoutResizeExecute === 'function',
+      resizeActive: isResizeActive()
     })
   };
 

@@ -1562,303 +1562,227 @@ const briefModalObserver = new MutationObserver((mutations) => {
 briefModalObserver.observe(document.body, { childList: true, subtree: true });
 
 
-///////////////////////////////// JOURNAAL RESIZER //////////////////////////////////////////////////////////////
+///////////////////////////////// JOURNAAL RESIZER (native Bricks layout) ////////////////////////////////////////
+// Oude Infused-sleepbalken braken na DOM-wijzigingen. Bricks heeft zelf layout.resize.toggle
+// (CTRL+SPACE → H hoofdmenu → L widget aanpassen). Infused zet dunne hit-zones op de grijze
+// tussenstroken; 1× klik togglet die native mode. Maten slaat Bricks op in P.settings.layout.
 
-let journaalResizer_resizeInitialized = false;
+const JOURNAAL_GAP_HIT_CLASS = 'bricks-infused-layout-gap-hit';
 let journaalResizer_observer = null;
+let journaalResizer_ro = null;
+let journaalResizer_refreshTimer = null;
+
 function journaalResizer_getOptionsFromStorage(cb) {
-    loadGlobalOptions(function(options) {
+    loadGlobalOptions(function (options) {
         cb(options.journaalResizer !== false);
     });
 }
 
-function journaalResizer_getLayoutElements() {
-    const tabjournaal = document.querySelector('.layout-renderer.layout-grid');
-    if (!tabjournaal) return null;
-
-    const widgets = Array.from(tabjournaal.querySelectorAll(':scope > .layout-widget, :scope > .layout-flex.layout-flex-column'));
-    if (widgets.length < 3) return null;
-
-    const col1 = widgets.find(widget => widget.querySelector('.journaal'));
-    const episoden = widgets.find(widget => widget.querySelector('.episoden-content'));
-    const colRight = widgets.find(widget => widget.querySelector('.attentieregels-container') && widget.querySelector('.medicatieprofiel-widget'));
-
-    if (!col1 || !episoden || !colRight) return null;
-    return { tabjournaal, col1, episoden, colRight };
+function journaalResizer_activePatientId() {
+    const m = (window.location.pathname || '').match(/\/s\/consult\/(\d+)/i)
+        || (window.location.pathname || '').match(/\/consult\/(\d+)/i);
+    return m ? m[1] : null;
 }
 
-function journaalResizer_addResizeFunctionality() {
-    if (journaalResizer_resizeInitialized) return;
-    const layout = journaalResizer_getLayoutElements();
-    if (!layout) return;
-    journaalResizer_resizeInitialized = true;
+function journaalResizer_findActiveShell() {
+    const patientId = journaalResizer_activePatientId();
+    const renderers = Array.from(document.querySelectorAll('.layout-renderer.layout-grid'));
+    if (!renderers.length) return null;
 
-    const { tabjournaal, col1, episoden, colRight } = layout;
-    const getColumnGap = () => parseFloat(getComputedStyle(tabjournaal).columnGap || '0') || 0;
-    const resizerHandleWidth = 15;
-    const horizontalResizerOffset = 8;
-    let currentCol1Size = col1.style.width || 'minmax(500px, 50%)';
-    let currentCol2Size = episoden.style.width || '1fr';
-
-    // laad de opgeslagen percentages
-    loadResizerPercentages(function(data) {
-        if (!data) return;
-        if (data.resizer1) currentCol1Size = data.resizer1;
-        if (data.resizer2) currentCol2Size = data.resizer2;
-        tabjournaal.style.gridTemplateColumns = `${currentCol1Size} ${currentCol2Size} 1fr`;
-        if (colRight && data.resizer3) colRight.style.gridTemplateRows = data.resizer3 + ' 1fr';
-        updateResizer1();
-        updateResizer2();
-        updateResizer3();
-    });
-
-    // Add resizer between col1 and colRight
-    const resizer1 = document.createElement('div');
-    resizer1.style.width = `${resizerHandleWidth}px`;
-    resizer1.style.cursor = 'col-resize';
-    resizer1.style.position = 'absolute';
-    resizer1.style.top = '0';
-    resizer1.style.bottom = '0';
-    resizer1.style.zIndex = '10';
-    //resizer1.style.background = 'rgba(0,0,0,0.05)';
-    resizer1.className = 'col-resizer-1';
-
-    // Add resizer between episoden and rechter kolom
-    const resizer2 = document.createElement('div');
-    resizer2.style.width = `${resizerHandleWidth}px`;
-    resizer2.style.cursor = 'col-resize';
-    resizer2.style.position = 'absolute';
-    resizer2.style.top = '0';
-    resizer2.style.bottom = '0';
-    resizer2.style.zIndex = '10';
-    //resizer2.style.background = 'rgba(0,0,0,0.05)';
-    resizer2.className = 'col-resizer-2';
-    
-    // Add vertical resizer between col3 (.attentieregels-container) and col4 (.medicatieprofiel-widget)
-    const attentieregels = colRight.querySelector('.attentieregels-container');
-    if (!attentieregels) return;
-    const resizer3 = document.createElement('div');
-    resizer3.style.height = '15px'; 
-    resizer3.style.cursor = 'row-resize';
-    resizer3.style.position = 'absolute';
-    resizer3.style.left = '0';
-    resizer3.style.right = '0';
-    resizer3.style.zIndex = '10';
-    //resizer3.style.background = 'rgba(0,0,0,0.05)';
-    resizer3.className = 'col-resizer-3';
-
-    // Set parent to relative for absolute positioning
-    tabjournaal.style.position = 'relative';
-    colRight.style.position = 'relative';
-
-    // Insert resizers
-    tabjournaal.appendChild(resizer1);
-    tabjournaal.appendChild(resizer2);
-    colRight.appendChild(resizer3);
-
-    // Position resizer1 between col1 and colRight
-    function updateResizer1() {
-        const tabRect = tabjournaal.getBoundingClientRect();
-        const col1Rect = col1.getBoundingClientRect();
-        const boundaryX = col1Rect.right - tabRect.left;
-        resizer1.style.left = (boundaryX - (resizerHandleWidth / 2) + horizontalResizerOffset) + 'px';
-        resizer1.style.height = tabjournaal.offsetHeight + 'px';
+    if (!patientId) {
+        return renderers.find((el) => el.querySelector('.journaal')) || renderers[0];
     }
-    // Position resizer2 between episoden and rechter kolom
-    function updateResizer2() {
-        const tabRect = tabjournaal.getBoundingClientRect();
-        const episodenRect = episoden.getBoundingClientRect();
-        const boundaryX = episodenRect.right - tabRect.left;
-        resizer2.style.left = (boundaryX - (resizerHandleWidth / 2) + horizontalResizerOffset) + 'px';
-        resizer2.style.height = tabjournaal.offsetHeight + 'px';
+
+    // Prefer layout that belongs to the active consult route / sidebar item.
+    const scoped = renderers.find((el) => {
+        if (!el.querySelector('.journaal')) return false;
+        const host = el.closest('[class*="consult"], .sidebar-item, .consult-content, .page-content') || el.parentElement;
+        if (!host) return true;
+        const hrefHit = host.querySelector(
+            `a[href*="/consult/${patientId}"], a[href*="/s/consult/${patientId}"]`
+        );
+        if (hrefHit) return true;
+        // Visible journaal while URL already points at this patient.
+        return el.offsetParent !== null;
+    });
+    return scoped || renderers.find((el) => el.querySelector('.journaal') && el.offsetParent !== null) || null;
+}
+
+function journaalResizer_clearHits(root) {
+    const scope = root || document;
+    scope.querySelectorAll('.' + JOURNAAL_GAP_HIT_CLASS).forEach((n) => n.remove());
+}
+
+function journaalResizer_onGapClick(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (!window.bricksBridge || typeof window.bricksBridge.toggleLayoutResize !== 'function') {
+        console.warn('Layout resize: bridge niet beschikbaar');
+        return;
     }
-    // Position resizer3 between attentieregels and medicatieprofiel
-    function updateResizer3() {
-        resizer3.style.top = (attentieregels.offsetHeight - 3) + 55 + 'px'; //55 omdat het kopje "attentieregels" niet wordt meegenomen, zou je naar de parent moeten verwijzen
-        resizer3.style.width = colRight.offsetWidth + 'px';
+    window.bricksBridge.toggleLayoutResize().then((result) => {
+        console.log('Layout resize toggle:', result);
+    }).catch((err) => {
+        console.warn('Layout resize toggle mislukt:', err);
+    });
+}
+
+function journaalResizer_placeGapHitsForGrid(grid) {
+    if (!grid || grid.offsetParent === null) return;
+    const cs = getComputedStyle(grid);
+    if (cs.display !== 'grid' && cs.display !== 'inline-grid') return;
+
+    const colGap = parseFloat(cs.columnGap) || 0;
+    const rowGap = parseFloat(cs.rowGap) || 0;
+    if (colGap < 2 && rowGap < 2) return;
+
+    const gridRect = grid.getBoundingClientRect();
+    const kids = Array.from(grid.children).filter((el) => {
+        if (el.classList && el.classList.contains(JOURNAAL_GAP_HIT_CLASS)) return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+    });
+    if (kids.length < 2) return;
+
+    if (getComputedStyle(grid).position === 'static') {
+        grid.style.position = 'relative';
     }
-    updateResizer1();
-    updateResizer2();
-    updateResizer3();
 
-    window.addEventListener('resize', () => {
-        updateResizer1();
-        updateResizer2();
-        updateResizer3();
-    });
+    const hitMin = 8;
 
-    // Drag logic for resizer1 (journaal <-> episoden/rechts)
-    resizer1.addEventListener('mousedown', function (e) {
-        e.preventDefault();
-        document.body.style.cursor = 'col-resize';
-        const startX = e.clientX;
-        const startCol1Width = col1.offsetWidth;
-        const startCol2Width = episoden.offsetWidth;
-        const totalWidth = tabjournaal.offsetWidth;
-        const gap = getColumnGap();
+    for (let i = 0; i < kids.length - 1; i++) {
+        const a = kids[i].getBoundingClientRect();
+        const b = kids[i + 1].getBoundingClientRect();
 
-        function onMouseMove(ev) {
-            let newCol1Width = startCol1Width + (ev.clientX - startX);
-            // Clamp min/max
-            newCol1Width = Math.max(320, Math.min(totalWidth - startCol2Width - gap * 2 - 260, newCol1Width));
-            currentCol1Size = `${Math.round(newCol1Width)}px`;
-            tabjournaal.style.gridTemplateColumns = `${currentCol1Size} ${currentCol2Size} 1fr`;
-            updateResizer1();
-            updateResizer2();
+        // Vertical gap between columns (side-by-side)
+        if (colGap >= 2 && b.left > a.right - 1) {
+            const gapLeft = a.right - gridRect.left;
+            const gapWidth = Math.max(colGap, b.left - a.right);
+            const hit = document.createElement('div');
+            hit.className = JOURNAAL_GAP_HIT_CLASS;
+            hit.title = 'Klik om widget-grootte aan te passen (CTRL+SPACE, H, L)';
+            hit.setAttribute('data-gap', 'col');
+            hit.style.cssText = [
+                'position:absolute',
+                `left:${gapLeft}px`,
+                `width:${Math.max(gapWidth, hitMin)}px`,
+                'top:0',
+                'bottom:0',
+                'cursor:col-resize',
+                'z-index:20',
+                'background:transparent'
+            ].join(';');
+            hit.addEventListener('mouseenter', () => {
+                hit.style.background = 'rgba(0,0,0,0.06)';
+            });
+            hit.addEventListener('mouseleave', () => {
+                hit.style.background = 'transparent';
+            });
+            hit.addEventListener('click', journaalResizer_onGapClick);
+            grid.appendChild(hit);
         }
-        function onMouseUp() {
-            saveResizerPercentages({ resizer1: currentCol1Size });
-            document.body.style.cursor = '';
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
+
+        // Horizontal gap between rows (stacked)
+        if (rowGap >= 2 && b.top > a.bottom - 1) {
+            const gapTop = a.bottom - gridRect.top;
+            const gapHeight = Math.max(rowGap, b.top - a.bottom);
+            const hit = document.createElement('div');
+            hit.className = JOURNAAL_GAP_HIT_CLASS;
+            hit.title = 'Klik om widget-grootte aan te passen (CTRL+SPACE, H, L)';
+            hit.setAttribute('data-gap', 'row');
+            hit.style.cssText = [
+                'position:absolute',
+                `top:${gapTop}px`,
+                `height:${Math.max(gapHeight, hitMin)}px`,
+                'left:0',
+                'right:0',
+                'cursor:row-resize',
+                'z-index:20',
+                'background:transparent'
+            ].join(';');
+            hit.addEventListener('mouseenter', () => {
+                hit.style.background = 'rgba(0,0,0,0.06)';
+            });
+            hit.addEventListener('mouseleave', () => {
+                hit.style.background = 'transparent';
+            });
+            hit.addEventListener('click', journaalResizer_onGapClick);
+            grid.appendChild(hit);
         }
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-    });
-
-    // Drag logic for resizer2 (episoden <-> rechter kolom)
-    resizer2.addEventListener('mousedown', function (e) {
-        e.preventDefault();
-        document.body.style.cursor = 'col-resize';
-        const startX = e.clientX;
-        const startCol2Width = episoden.offsetWidth;
-        const tabWidth = tabjournaal.offsetWidth;
-        const gap = getColumnGap();
-        const col1Width = col1.offsetWidth;
-
-        function onMouseMove(ev) {
-            let newCol2Width = startCol2Width + (ev.clientX - startX);
-            newCol2Width = Math.max(220, Math.min(tabWidth - col1Width - gap * 2 - 260, newCol2Width));
-            currentCol2Size = `${Math.round(newCol2Width)}px`;
-            tabjournaal.style.gridTemplateColumns = `${currentCol1Size} ${currentCol2Size} 1fr`;
-            updateResizer2();
-        }
-        function onMouseUp() {
-            saveResizerPercentages({ resizer2: currentCol2Size });
-            document.body.style.cursor = '';
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-        }
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-    });
-
-    // Drag logic for resizer3 (col3 <-> col4 inside colRight)
-    resizer3.addEventListener('mousedown', function (e) {
-        e.preventDefault();
-        document.body.style.cursor = 'row-resize';
-        const startY = e.clientY;
-        const startAttentieregelsHeight = attentieregels.offsetHeight;
-
-        function onMouseMove(ev) {
-            let newAttentieregelsHeight = startAttentieregelsHeight + (ev.clientY - startY) + 55;
-            newAttentieregelsHeight = Math.max(150, Math.min(colRight.offsetHeight - 200 , newAttentieregelsHeight));
-            const percent = (newAttentieregelsHeight / colRight.offsetHeight) * 100;
-            colRight.style.gridTemplateRows = percent + '% 1fr';
-            updateResizer3();
-            resizer3.dataset.pendingPercent = percent + '%';
-        }
-        function onMouseUp() {
-            const pendingResizer3 = resizer3.dataset.pendingPercent;
-            if (pendingResizer3) {
-                saveResizerPercentages({ resizer3: pendingResizer3 });
-                delete resizer3.dataset.pendingPercent;
-            }
-            document.body.style.cursor = '';
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-        }
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-    });
-
-    tabjournaal.style.display = 'grid';
-    colRight.style.display = 'grid';
-    tabjournaal.style.gridTemplateColumns = `${currentCol1Size} ${currentCol2Size} 1fr`;
-
-    // Observe size changes
-    new ResizeObserver(() => {
-        updateResizer1();
-        updateResizer2();
-        updateResizer3();
-    }).observe(tabjournaal);
-    new ResizeObserver(() => {
-        updateResizer2();
-    }).observe(colRight);
-    new ResizeObserver(() => {
-        updateResizer3();
-    }).observe(colRight);
-    console.log("einde");
+    }
 }
 
-// Helper om percentages op te slaan
-function saveResizerPercentages({resizer1, resizer2, resizer3}) {
-    chrome.runtime.sendMessage({
-        type: 'saveResizerPercentages',
-        resizer1, resizer2, resizer3
-    });
-}
-// Helper om percentages op te halen
-function loadResizerPercentages(cb) {
-    chrome.runtime.sendMessage({ type: 'getResizerPercentages' }, cb);
-}
+function journaalResizer_refreshHits() {
+    journaalResizer_getOptionsFromStorage(function (enabled) {
+        if (!enabled) {
+            journaalResizer_clearHits(document);
+            return;
+        }
+        const shell = journaalResizer_findActiveShell();
+        journaalResizer_clearHits(document);
+        if (!shell) return;
 
-// Pas in journaalResizer_addResizeFunctionality de set van gridTemplateColumns/Rows aan:
-// - Bij het aanpassen van resizer1, resizer2, resizer3: sla de nieuwe percentages op via saveResizerPercentages
-// - Bij init: haal de percentages op via loadResizerPercentages en pas ze toe
+        // Native handles when already resizing — geen extra hit-zones nodig.
+        if (shell.classList.contains('resize-active') || document.querySelector('.layout-renderer.resize-active')) {
+            return;
+        }
 
-
-
-// In de onMouseMove van elke resizer:
-// - resizer1: saveResizerPercentages({resizer1: percent + '%', ...})
-// - resizer2: saveResizerPercentages({resizer2: percent + '%', ...})
-// - resizer3: saveResizerPercentages({resizer3: percent + '%', ...})
-
-//function waitForCol1AndInit() {
-//    const col1 = document.querySelector('.col1');
-//    if (col1) {
-//        addResizeFunctionality();
-//    } else {
-//        setTimeout(waitForCol1AndInit, 500);
-//    }
-//}
-//waitForCol1AndInit();
-function journaalResizer_setupCol1Observer() {
-    journaalResizer_getOptionsFromStorage(function(enabled) {
-        if (!enabled) return;
-        if (journaalResizer_observer) journaalResizer_observer.disconnect();
-        journaalResizer_observer = new MutationObserver(() => {
-            const layout = journaalResizer_getLayoutElements();
-            if (layout && layout.col1.offsetParent !== null) {
-                journaalResizer_addResizeFunctionality();
-                journaalResizer_observer.disconnect();
-                // Now observe for disappearance
-                journaalResizer_setupCol1DisappearObserver();
-            }
+        const grids = [shell].concat(
+            Array.from(shell.querySelectorAll('.layout-grid, .layout-flex.layout-flex-column'))
+        );
+        const seen = new Set();
+        grids.forEach((g) => {
+            if (!g || seen.has(g)) return;
+            seen.add(g);
+            journaalResizer_placeGapHitsForGrid(g);
         });
-        journaalResizer_observer.observe(document.body, { childList: true, subtree: true });
     });
 }
 
-function journaalResizer_setupCol1DisappearObserver() {
-    journaalResizer_getOptionsFromStorage(function(enabled) {
-        if (!enabled) return;
+function journaalResizer_scheduleRefresh() {
+    if (journaalResizer_refreshTimer) clearTimeout(journaalResizer_refreshTimer);
+    journaalResizer_refreshTimer = setTimeout(() => {
+        journaalResizer_refreshTimer = null;
+        journaalResizer_refreshHits();
+    }, 120);
+}
+
+function journaalResizer_setup() {
+    journaalResizer_getOptionsFromStorage(function (enabled) {
+        if (!enabled) {
+            journaalResizer_clearHits(document);
+            return;
+        }
         if (journaalResizer_observer) journaalResizer_observer.disconnect();
-        journaalResizer_observer = new MutationObserver(() => {
-            const layout = journaalResizer_getLayoutElements();
-            if (!layout || layout.col1.offsetParent === null) {
-                journaalResizer_resizeInitialized = false;
-                journaalResizer_observer.disconnect();
-                // Start checking for appearance again
-                journaalResizer_setupCol1Observer();
-            }
+        journaalResizer_observer = new MutationObserver((mutations) => {
+            // Ignore our own hit-zone DOM noise
+            const relevant = mutations.some((m) => {
+                const nodes = []
+                    .concat(Array.from(m.addedNodes || []))
+                    .concat(Array.from(m.removedNodes || []));
+                if (!nodes.length && m.type === 'attributes') return true;
+                return nodes.some((n) => !(n.classList && n.classList.contains(JOURNAAL_GAP_HIT_CLASS)));
+            });
+            if (relevant) journaalResizer_scheduleRefresh();
         });
-        journaalResizer_observer.observe(document.body, { childList: true, subtree: true });
+        journaalResizer_observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['class', 'style']
+        });
+
+        if (journaalResizer_ro) {
+            try { journaalResizer_ro.disconnect(); } catch (e) { /* ignore */ }
+        }
+        journaalResizer_ro = new ResizeObserver(() => journaalResizer_scheduleRefresh());
+        journaalResizer_ro.observe(document.body);
+
+        journaalResizer_scheduleRefresh();
     });
 }
 
-// Start observing for col1 appearance
-journaalResizer_setupCol1Observer();
+journaalResizer_setup();
 
 ///////////////////////////////// DECLAREREN NIET METEEEN OP GEBEURD ZETTEN //////////////////////////////////////////////////////////////
 

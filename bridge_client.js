@@ -69,6 +69,7 @@
     navigate: (to) => call('navigate', { to }),
     doApi: (service, method, params, ignoreBusy) =>
       call('doApi', { service, method, params, ignoreBusy }, 60000),
+    toggleLayoutResize: () => call('toggleLayoutResize', {}, 5000),
     startZorgdomeinVerwijzing: (opts) =>
       call('startZorgdomeinVerwijzing', opts || {}, 60000),
     ping: () => call('ping')

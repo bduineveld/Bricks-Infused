@@ -197,6 +197,28 @@ Prefer: **router + `B.doApi` + explicit patientId/contactId**.
 
 ---
 
+## Layout resize (journaal widgets)
+
+Native command (registered in command map `g0`):
+
+- id: `layout.resize.toggle`
+- caption: “Widgets aanpassen”
+- execute: `qA.trigger(document.querySelector(".layout-renderer.resize-active") ? "widgets.resize.stop" : "widgets.resize.start")`
+
+Keyboard path (sneltoetsenpalette):
+
+1. **CTRL+SPACE** — opent sneltoetsen
+2. **H** — hoofdmenu
+3. **L** — widget aanpassen
+
+While active, `.layout-renderer` gets class `resize-active`. Sizes persist in `P.settings.layout.sizes` / `P.settings.layout.active`.
+
+Infused (v2.1+): does **not** drag columns itself. Gap hit-zones on grey between-panes call `bricksBridge.toggleLayoutResize()` which prefers the captured command, then event-bus, then the keychord fallback.
+
+Old Infused resizer broke because journaal DOM nested under `.consult-journaal-stack` (no flat 3-column `.col1` layout).
+
+---
+
 ## Extension bridge files
 
 | File | World | Role |
@@ -212,6 +234,7 @@ Client helpers:
 await bricksBridge.getActiveContext()
 await bricksBridge.navigate('/taken')
 await bricksBridge.doApi('Taken', 'NewTaak', {})
+await bricksBridge.toggleLayoutResize()
 await bricksBridge.startZorgdomeinVerwijzing({ patientId, episodelijstNodig: false })
 await bricksBridge.waitUntilReady()
 ```
