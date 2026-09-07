@@ -100,7 +100,7 @@ B.taken.deleteTaak(taakId, askForCollectieDelete)
 
 UI store (when `P` available): `P.taken`, `P.settings.taken.filter`, `setFilter` on taken page state.
 
-Settings export/import uses `B.taken.*` (no Taken-page clicks): find/create taak `Bricks Infused Instellingen` (status Afgehandeld, toegewezen aan jezelf) and store compact JSON in `Omschrijving` (max 2000 chars).
+Settings export/import writes compact JSON to `UISettings.Vars.BricksInfused` via `B.hisRegie.getUISettings` / `setUISettings` (same store as AppSettings/Widgets). Taken-omschrijving is only a legacy import fallback — the list preview truncates that field.
 
 ---
 
@@ -234,6 +234,8 @@ Client helpers:
 await bricksBridge.getActiveContext()
 await bricksBridge.navigate('/taken')
 await bricksBridge.whoAmI()
+await bricksBridge.getUISettings()
+await bricksBridge.setUISettings(settings)
 await bricksBridge.takenNew()
 await bricksBridge.takenStore(taak, false, true)
 await bricksBridge.takenGet(taakId)
@@ -247,7 +249,7 @@ await bricksBridge.waitUntilReady()
 
 ## Still DOM-based / multi-context risky (backlog)
 
-- Settings export/import via `B.taken.*` (no Taken UI).
+- Settings export/import via `UISettings.Vars.BricksInfused` (Taken-omschrijving is legacy fallback).
 - `communicatie_changeContact` (global koppelinfo picker).
 - `declareren` / einde-consult helpers (global modal selectors).
 - `content_uprevent.js` scrapes episoden/medicatie/journaal from the **active** consult shell (`patientId` from URL/`bricksBridge.getActiveContext`). Missing data is preferred over another dossier’s widgets.

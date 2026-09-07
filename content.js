@@ -14,12 +14,12 @@ let globalOptions = null;
 let optionsLoaded = false;
 let optionsTimestamp = null;
 
-// Instellingen delen via een Bricks-taak (API, geen Taken-UI).
-// Titel: "Bricks Infused Instellingen", status Afgehandeld, toegewezen aan jezelf.
-// Omschrijving heeft in Bricks een limiet van 2000 tekens (yP).
+// Instellingen delen via Bricks-account UISettings.Vars.BricksInfused
+// (zelfde store als AppSettings/Widgets). Taken-omschrijving is te kort
+// (lijst/preview knipt de JSON af). Oude taak blijft leesbaar bij import.
 
 const SETTINGS_TAAK_NAAM = 'Bricks Infused Instellingen';
-const SETTINGS_TAAK_MAX_LEN = 2000;
+const SETTINGS_UI_VAR = 'BricksInfused';
 
 function settings_sendStorageResponse(key, payload) {
   chrome.storage.local.set({ [key]: payload });
@@ -69,21 +69,11 @@ async function settings_findExistingTaak(medewerkerId) {
   return null;
 }
 
-function settings_ensureSelfRelaties(taak, medewerkerId) {
-  taak.Relaties = Array.isArray(taak.Relaties) ? taak.Relaties : [];
-  if (!taak.Relaties.some((r) => r.Rol === 'ToegewezenAan')) {
-    taak.Relaties.push({ Rol: 'ToegewezenAan', Entiteit: 'Medewerker', EntiteitId: medewerkerId });
-  }
-  if (!taak.Relaties.some((r) => r.Rol === 'AangemaaktDoor')) {
-    taak.Relaties.push({ Rol: 'AangemaaktDoor', Entiteit: 'Medewerker', EntiteitId: medewerkerId });
-  }
-}
-
 function settings_stringify(settings) {
   return JSON.stringify(settings);
 }
 
-function settings_parseOmschrijving(raw) {
+function settings_parseJson(raw) {
   if (!raw || typeof raw !== 'string') return null;
   try {
     const parsed = JSON.parse(raw);
@@ -93,43 +83,51 @@ function settings_parseOmschrijving(raw) {
   }
 }
 
+function settings_uiData(res) {
+  return (res && res.ReturnValue) || res || null;
+}
+
+async function settings_readFromUISettings() {
+  const res = await window.bricksBridge.getUISettings();
+  const data = settings_uiData(res);
+  const raw = data && data.Vars && data.Vars[SETTINGS_UI_VAR];
+  return settings_parseJson(raw);
+}
+
+async function settings_writeToUISettings(settings) {
+  const res = await window.bricksBridge.getUISettings();
+  const data = settings_uiData(res);
+  if (!data || typeof data !== 'object') {
+    throw new Error('Kon account-instellingen niet ophalen');
+  }
+  data.Vars = data.Vars && typeof data.Vars === 'object' ? data.Vars : {};
+  const json = settings_stringify(settings || {});
+  data.Vars[SETTINGS_UI_VAR] = json;
+  await window.bricksBridge.setUISettings(data);
+  const verify = await settings_readFromUISettings();
+  if (!verify || Object.keys(verify).length < Object.keys(settings || {}).length) {
+    throw new Error('Instellingen werden niet volledig opgeslagen in het account');
+  }
+}
+
+async function settings_readFromTaakFallback() {
+  const medewerkerId = await settings_getMedewerkerId();
+  const taak = await settings_findExistingTaak(medewerkerId);
+  if (!taak) return null;
+  return settings_parseJson(taak.Omschrijving);
+}
+
 async function exportSettingsToBricks(settings, requestId) {
   try {
     await settings_requireBridge();
-    const json = settings_stringify(settings || {});
-    if (json.length > SETTINGS_TAAK_MAX_LEN) {
-      throw new Error(
-        `Instellingen te groot voor een Bricks-taak (${json.length} / ${SETTINGS_TAAK_MAX_LEN} tekens)`
-      );
-    }
-    const medewerkerId = await settings_getMedewerkerId();
-    let taak = await settings_findExistingTaak(medewerkerId);
-    if (!taak) {
-      const created = await window.bricksBridge.takenNew();
-      taak = (created && created.ReturnValue) || created;
-      if (!taak || typeof taak !== 'object') throw new Error('Nieuwe taak aanmaken mislukt');
-      taak.Naam = SETTINGS_TAAK_NAAM;
-      taak.DatumTijd = new Date();
-      taak.Prioriteit = taak.Prioriteit || 'Normaal';
-    }
-    settings_ensureSelfRelaties(taak, medewerkerId);
-    taak.Naam = SETTINGS_TAAK_NAAM;
-    taak.Omschrijving = json;
-    taak.Status = 'Afgehandeld';
-
-    const stored = await window.bricksBridge.takenStore(taak, false, true);
-    const storedId = stored && stored.ReturnValue;
-    if (!(storedId > 0)) {
-      throw new Error('Opslaan van taak mislukt');
-    }
-
+    await settings_writeToUISettings(settings || {});
     settings_sendStorageResponse('exportSettingsResponse', {
       requestId,
       success: true,
       handled: true
     });
   } catch (err) {
-    console.warn('Settings-export via Taken-API mislukt:', err);
+    console.warn('Settings-export via UISettings mislukt:', err);
     settings_sendStorageResponse('exportSettingsResponse', {
       requestId,
       success: false,
@@ -142,20 +140,14 @@ async function exportSettingsToBricks(settings, requestId) {
 async function importSettingsFromBricks(requestId) {
   try {
     await settings_requireBridge();
-    const medewerkerId = await settings_getMedewerkerId();
-    const taak = await settings_findExistingTaak(medewerkerId);
-    if (!taak) {
-      settings_sendStorageResponse('importSettingsResponse', {
-        requestId,
-        success: true,
-        handled: true,
-        settings: null
-      });
-      return;
+    let parsed = null;
+    try {
+      parsed = await settings_readFromUISettings();
+    } catch (e) {
+      console.warn('Settings-import UISettings mislukt, taak-fallback:', e);
     }
-    const parsed = settings_parseOmschrijving(taak.Omschrijving);
     if (!parsed) {
-      throw new Error('Taak gevonden, maar inhoud is geen geldige instellingen-JSON');
+      parsed = await settings_readFromTaakFallback();
     }
     settings_sendStorageResponse('importSettingsResponse', {
       requestId,
@@ -164,7 +156,7 @@ async function importSettingsFromBricks(requestId) {
       settings: parsed
     });
   } catch (err) {
-    console.warn('Settings-import via Taken-API mislukt:', err);
+    console.warn('Settings-import mislukt:', err);
     settings_sendStorageResponse('importSettingsResponse', {
       requestId,
       success: false,

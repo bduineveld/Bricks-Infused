@@ -73,6 +73,8 @@
     startZorgdomeinVerwijzing: (opts) =>
       call('startZorgdomeinVerwijzing', opts || {}, 60000),
     whoAmI: () => call('whoAmI'),
+    getUISettings: () => call('getUISettings'),
+    setUISettings: (settings) => call('setUISettings', { settings }),
     takenNew: () => call('takenNew'),
     takenStore: (taak, seperateTaskForEachMedewerker, askForCollectieUpdate) =>
       call('takenStore', {

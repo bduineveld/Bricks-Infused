@@ -441,6 +441,16 @@
           throw new Error('bricks-api-not-ready');
         }
         return state.B.hisRegie.wieBenIk().then((r) => (r && r.ReturnValue) || r);
+      case 'getUISettings':
+        if (!state.B || !state.B.hisRegie || typeof state.B.hisRegie.getUISettings !== 'function') {
+          throw new Error('bricks-api-not-ready');
+        }
+        return state.B.hisRegie.getUISettings();
+      case 'setUISettings':
+        if (!state.B || !state.B.hisRegie || typeof state.B.hisRegie.setUISettings !== 'function') {
+          throw new Error('bricks-api-not-ready');
+        }
+        return state.B.hisRegie.setUISettings(args.settings);
       case 'takenNew':
         if (!state.B || !state.B.taken) throw new Error('bricks-api-not-ready');
         return state.B.taken.newTaak();

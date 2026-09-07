@@ -36,7 +36,7 @@ const UPREVENT_EXT_IDS_PROD = [
 ];
 // === DEV-ONLY: maak deze array leeg (`[]`) vóór upload naar de Edge store ===
 const UPREVENT_EXT_IDS_DEV = [
-  "hdneeeaikfhphigcmjcfppkclpoglhfb" // U-Prevent Infused — dev (key in manifest)
+  
 ];
 // ============================================================================
 const UPREVENT_EXT_IDS = [...UPREVENT_EXT_IDS_PROD, ...UPREVENT_EXT_IDS_DEV];
