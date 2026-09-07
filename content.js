@@ -1246,128 +1246,261 @@ favorieten_observer.observe(document.body, { childList: true, subtree: true });
 
 ///////////////////////////////// BRIEF EXPORT ALS PDF //////////////////////////////////////////////////////////////
 
+function redactBsnInText(text) {
+    if (!text) return text;
+    return String(text)
+        // Label + waarde (zelfde regel of gesplitst over whitespace/newlines)
+        .replace(/BSN\s*:?\s*\d{9}/gi, 'BSN: *********')
+        .replace(/\b\d{4}\.\d{2}\.\d{3}\b/g, '****.**.***')
+        // Uit voorzorg: losse 9-cijferige getallen (BSN-lengte); header zet label/waarde vaak apart
+        .replace(/\b\d{9}\b/g, '*********');
+}
+
+/** Header-velden: label "BSN" en cijfers staan in aparte cellen. */
+function redactBsnField(label, value) {
+    const lab = (label || '').trim();
+    let val = value == null ? '' : String(value);
+    if (/^BSN:?$/i.test(lab)) {
+        val = val
+            .replace(/\b\d{4}\.\d{2}\.\d{3}\b/g, '****.**.***')
+            .replace(/\b\d{9}\b/g, '*********');
+        return { label: lab, value: val };
+    }
+    return { label: redactBsnInText(lab), value: redactBsnInText(val) };
+}
+
+function findBriefExportAnchor(modalFooter) {
+    const rightDiv = modalFooter.querySelector('.right') || modalFooter;
+    const buttons = rightDiv.querySelectorAll('button');
+    let anchorBtn = null;
+    buttons.forEach((btn) => {
+        if (btn.classList.contains('btn-pdf-export') || btn.classList.contains('btn-pdf-export-caret')) return;
+        const label = (btn.querySelector('span')?.textContent || btn.textContent || '').trim().toLowerCase();
+        if (label === 'export' || label === 'exporteren' || label === 'exporteer') {
+            anchorBtn = btn;
+        }
+    });
+    if (!anchorBtn) {
+        buttons.forEach((btn) => {
+            if (btn.classList.contains('btn-pdf-export') || btn.classList.contains('btn-pdf-export-caret')) return;
+            const label = (btn.querySelector('span')?.textContent || btn.textContent || '').trim().toLowerCase();
+            if (label === 'afdrukken' || label === 'print') anchorBtn = btn;
+        });
+    }
+    return { rightDiv, anchorBtn };
+}
+
+function closePdfExportMenu() {
+    document.querySelectorAll('.bricks-infused-pdf-export-menu').forEach((el) => el.remove());
+    document.removeEventListener('click', pdfExportMenuOutsideClick, true);
+    document.removeEventListener('keydown', pdfExportMenuEscape, true);
+}
+
+function pdfExportMenuOutsideClick(ev) {
+    const menu = document.querySelector('.bricks-infused-pdf-export-menu');
+    const caret = document.querySelector('.btn-pdf-export-caret');
+    if (!menu) return;
+    if (menu.contains(ev.target) || (caret && caret.contains(ev.target))) return;
+    closePdfExportMenu();
+}
+
+function pdfExportMenuEscape(ev) {
+    if (ev.key === 'Escape') closePdfExportMenu();
+}
+
+function runBriefPdfExport(modalDialog, berichtdetails, options) {
+    const opts = options || {};
+    const berichtContainer = modalDialog.querySelector('.berichtsoort-med-container')
+        || document.querySelector('.berichtsoort-med-container');
+
+    const finish = (target) => {
+        exportBerichtAsPdf(target, { redactBsn: !!opts.redactBsn });
+    };
+
+    if (!berichtContainer) {
+        finish(berichtdetails);
+        return;
+    }
+
+    const headerContainer = berichtContainer.querySelector('.berichtsoort-med-kop-container');
+    if (headerContainer) {
+        finish(berichtContainer);
+        return;
+    }
+
+    const chevronDown = modalDialog.querySelector('.berichtsoort-med-smallkop-container .fa-chevron-down')
+        || document.querySelector('.berichtsoort-med-smallkop-container .fa-chevron-down');
+    if (!chevronDown) {
+        finish(berichtContainer);
+        return;
+    }
+
+    chevronDown.click();
+    let exportExecuted = false;
+    let checkContainer = null;
+    let timeoutId = null;
+
+    timeoutId = setTimeout(() => {
+        if (!exportExecuted) {
+            exportExecuted = true;
+            if (checkContainer) clearInterval(checkContainer);
+            finish(berichtContainer);
+        }
+    }, 2000);
+
+    checkContainer = setInterval(() => {
+        const newHeaderContainer = berichtContainer.querySelector('.berichtsoort-med-kop-container');
+        if (newHeaderContainer && !exportExecuted) {
+            exportExecuted = true;
+            clearInterval(checkContainer);
+            if (timeoutId) clearTimeout(timeoutId);
+            finish(berichtContainer);
+        }
+    }, 100);
+}
+
+function openPdfExportMenu(caretBtn, modalDialog, berichtdetails, exportAnchorBtn) {
+    closePdfExportMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'bricks-infused-pdf-export-menu';
+    menu.style.cssText = [
+        'position:absolute',
+        'z-index:10000',
+        'min-width:160px',
+        'background:#fff',
+        'border:1px solid #cbd5e0',
+        'border-radius:4px',
+        'box-shadow:0 4px 12px rgba(0,0,0,0.12)',
+        'padding:4px 0',
+        'font-size:13px'
+    ].join(';');
+
+    const items = [
+        { id: 'export', label: 'Export' },
+        { id: 'pdf', label: 'PDF' },
+        { id: 'pdf-no-bsn', label: 'PDF zonder BSN' }
+    ];
+
+    items.forEach((item) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.textContent = item.label;
+        row.style.cssText = [
+            'display:block',
+            'width:100%',
+            'text-align:left',
+            'padding:6px 12px',
+            'border:0',
+            'background:transparent',
+            'cursor:pointer'
+        ].join(';');
+        row.addEventListener('mouseenter', () => { row.style.background = '#edf2f7'; });
+        row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+        row.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            closePdfExportMenu();
+            if (item.id === 'export') {
+                if (exportAnchorBtn) exportAnchorBtn.click();
+                return;
+            }
+            if (caretBtn.dataset.exporting === 'true') return;
+            caretBtn.dataset.exporting = 'true';
+            try {
+                runBriefPdfExport(modalDialog, berichtdetails, {
+                    redactBsn: item.id === 'pdf-no-bsn'
+                });
+            } finally {
+                setTimeout(() => { caretBtn.dataset.exporting = 'false'; }, 500);
+            }
+        });
+        menu.appendChild(row);
+    });
+
+    document.body.appendChild(menu);
+    const rect = caretBtn.getBoundingClientRect();
+    menu.style.left = Math.max(8, rect.right - menu.offsetWidth) + 'px';
+    menu.style.top = (rect.bottom + 4) + 'px';
+
+    setTimeout(() => {
+        document.addEventListener('click', pdfExportMenuOutsideClick, true);
+        document.addEventListener('keydown', pdfExportMenuEscape, true);
+    }, 0);
+}
+
 function addPdfExportButton() {
     //te doen:
     //- tabellen zoals bij labwaarden maken
     //- tiff afbeeldingen samenvoegen als pdf
-    //- optie om BSN te verwijderen
 
-    
-    // Check of er een brief modal open is
-    const modalDialog = document.querySelector('.modal-dialog.nopadding');
+    const modalDialog = document.querySelector('.modal-dialog.nopadding')
+        || document.querySelector('.modal-dialog .toon-bericht-container')?.closest('.modal-dialog');
     if (!modalDialog) return;
 
-    // Controleer of PDF export optie is ingeschakeld
-    loadGlobalOptions(function(options) {
+    loadGlobalOptions(function (options) {
         if (!options.pdfExport) {
-            console.log("PDF export disabled, skipping");
+            console.log('PDF export disabled, skipping');
             return;
         }
-    });
-    console.log("PDF export kom hier met die knop");
-    const toonBerichtContainer = modalDialog.querySelector('.toon-bericht-container');
-    //const berichtdetails = modalDialog.querySelector('.berichtdetails');
-    const berichtdetails = document.querySelector('.berichtsoort-med-container .bericht-html');
-    const modalFooter = modalDialog.querySelector('.modal-footer');
-    
-    if (!toonBerichtContainer || !berichtdetails || !modalFooter) return;
-    
-    // Check of de PDF export knop al bestaat
-    const existingPdfBtn = modalFooter.querySelector('.btn-pdf-export');
-    if (existingPdfBtn) return;
-    
-    // Maak de PDF export knop
-    const pdfBtn = document.createElement('button');
-    pdfBtn.className = 'btn btn-modal btn-secondary-light btn-pdf-export';
-    pdfBtn.setAttribute('data-icon', '');
-    pdfBtn.setAttribute('data-focus', 'false');
-    pdfBtn.innerHTML = '<!----><span class="">Export PDF</span><!---->';
-    
-    // Voeg event listener toe
-    pdfBtn.addEventListener('click', () => {
-        // Voorkom dubbele uitvoering
-        if (pdfBtn.dataset.exporting === 'true') {
+
+        const toonBerichtContainer = modalDialog.querySelector('.toon-bericht-container');
+        const berichtdetails = modalDialog.querySelector('.berichtsoort-med-container .bericht-html')
+            || document.querySelector('.berichtsoort-med-container .bericht-html')
+            || modalDialog.querySelector('.bericht-html');
+        const modalFooter = modalDialog.querySelector('.modal-footer');
+
+        if (!toonBerichtContainer || !modalFooter) return;
+        // Bericht-body kan iets later laden dan de modal shell
+        if (!berichtdetails) {
+            console.log('PDF export: bericht-html nog niet aanwezig, later opnieuw');
             return;
         }
-        pdfBtn.dataset.exporting = 'true';
-        
-        const berichtContainer = document.querySelector('.berichtsoort-med-container');
-        if (berichtContainer) {
-            // Check of de header container bestaat
-            const headerContainer = berichtContainer.querySelector('.berichtsoort-med-kop-container');
-            if (!headerContainer) {
-                // Klik op de chevron-down om de container te tonen
-                const chevronDown = document.querySelector('.berichtsoort-med-smallkop-container .fa-chevron-down');
-                if (chevronDown) {
-                    chevronDown.click();
-                    
-                    let exportExecuted = false;
-                    let checkContainer = null;
-                    let timeoutId = null;
-                    
-                    // Timeout na 2 seconden (als het niet werkt)
-                    timeoutId = setTimeout(() => {
-                        if (!exportExecuted) {
-                            exportExecuted = true;
-                            if (checkContainer) clearInterval(checkContainer);
-                            exportBerichtAsPdf(berichtContainer);
-                            pdfBtn.dataset.exporting = 'false';
-                        }
-                    }, 2000);
-                    
-                    // Wacht tot de container verschijnt, dan export uitvoeren
-                    checkContainer = setInterval(() => {
-                        const newHeaderContainer = berichtContainer.querySelector('.berichtsoort-med-kop-container');
-                        if (newHeaderContainer && !exportExecuted) {
-                            exportExecuted = true;
-                            clearInterval(checkContainer);
-                            if (timeoutId) clearTimeout(timeoutId);
-                            exportBerichtAsPdf(berichtContainer);
-                            pdfBtn.dataset.exporting = 'false';
-                        }
-                    }, 100);
-                } else {
-                    // Als chevron niet gevonden, gewoon exporteren zonder header
-                    exportBerichtAsPdf(berichtContainer);
-                    pdfBtn.dataset.exporting = 'false';
-                }
-            } else {
-                // Header container bestaat al, direct exporteren
-                exportBerichtAsPdf(berichtContainer);
-                pdfBtn.dataset.exporting = 'false';
+
+        // Oude losse PDF-knop opruimen
+        modalFooter.querySelectorAll('.btn-pdf-export').forEach((el) => el.remove());
+        if (modalFooter.querySelector('.btn-pdf-export-caret')) return;
+
+        const { rightDiv, anchorBtn } = findBriefExportAnchor(modalFooter);
+        if (!anchorBtn) {
+            console.log('PDF export: Export-knop niet gevonden');
+            return;
+        }
+
+        const caretBtn = document.createElement('button');
+        caretBtn.type = 'button';
+        caretBtn.className = 'btn btn-modal btn-secondary-light btn-pdf-export-caret';
+        caretBtn.setAttribute('data-icon', '');
+        caretBtn.setAttribute('data-focus', 'false');
+        caretBtn.title = 'Export-opties (Bricks Infused)';
+        caretBtn.style.cssText = 'min-width:28px;padding-left:6px;padding-right:6px;margin-left:2px;';
+        caretBtn.innerHTML = '<span class="fas fa-caret-down" aria-hidden="true"></span>';
+
+        caretBtn.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const existing = document.querySelector('.bricks-infused-pdf-export-menu');
+            if (existing) {
+                closePdfExportMenu();
+                return;
             }
+            openPdfExportMenu(caretBtn, modalDialog, berichtdetails, anchorBtn);
+        });
+
+        if (anchorBtn.parentNode) {
+            anchorBtn.parentNode.insertBefore(caretBtn, anchorBtn.nextSibling);
         } else {
-            exportBerichtAsPdf(berichtdetails);
-            pdfBtn.dataset.exporting = 'false';
+            rightDiv.appendChild(caretBtn);
         }
+
+        console.log('PDF export-dropdown toegevoegd naast Export');
     });
-    
-    // Voeg de knop toe naast de Export knop
-    const buttons = modalFooter.querySelectorAll('.right button');
-    let exportBtn = null;
-    
-    // Zoek de Export knop
-    buttons.forEach(btn => {
-        const span = btn.querySelector('span');
-        if (span && span.textContent.trim() === 'Export') {
-            exportBtn = btn;
-        }
-    });
-    
-    if (exportBtn) {
-        exportBtn.parentNode.insertBefore(pdfBtn, exportBtn.nextSibling);
-    } else {
-        // Als Export knop niet gevonden, voeg toe aan het einde van de right div
-        const rightDiv = modalFooter.querySelector('.right');
-        if (rightDiv) {
-            rightDiv.appendChild(pdfBtn);
-        }
-    }
-    
-    console.log('PDF export knop toegevoegd aan brief modal');
 }
 
-function exportBerichtAsPdf(berichtContainer) {
+function exportBerichtAsPdf(berichtContainer, options) {
+    const opts = options || {};
+    const maybeRedact = (t) => (opts.redactBsn ? redactBsnInText(t) : t);
+
     try {
         // Maak nieuw PDF document
         const { jsPDF } = window.jspdf;
@@ -1386,7 +1519,9 @@ function exportBerichtAsPdf(berichtContainer) {
         let currentY = marginTop;
         
         // Haal de header tabel op (berichtsoort-med-kop-container)
-        const headerContainer = berichtContainer.querySelector('.berichtsoort-med-kop-container');
+        const headerContainer = berichtContainer.querySelector
+            ? berichtContainer.querySelector('.berichtsoort-med-kop-container')
+            : null;
         if (headerContainer) {
             const headerColumns = headerContainer.querySelectorAll('.berichtsoort-med-kop');
             
@@ -1399,13 +1534,13 @@ function exportBerichtAsPdf(berichtContainer) {
                 // Tekst voor elke kolom verzamelen
                 const columnData = [];
                 headerColumns.forEach((col) => {
-                    const title = col.querySelector('.title')?.textContent?.trim() || '';
+                    const title = maybeRedact(col.querySelector('.title')?.textContent?.trim() || '');
                     const data = [];
                     
                     // Verzamel alle label-waarde paren
                     const col1s = col.querySelectorAll('.col1');
                     col1s.forEach((col1) => {
-                        const label = col1.textContent?.trim() || '';
+                        let label = col1.textContent?.trim() || '';
                         const nextSibling = col1.nextElementSibling;
                         if (nextSibling && !nextSibling.classList.contains('col1')) {
                             let value = '';
@@ -1415,6 +1550,11 @@ function exportBerichtAsPdf(berichtContainer) {
                                 value = Array.from(divs).map(d => d.textContent?.trim()).filter(t => t).join('\n');
                             } else {
                                 value = nextSibling.textContent?.trim() || '';
+                            }
+                            if (opts.redactBsn) {
+                                const redacted = redactBsnField(label, value);
+                                label = redacted.label;
+                                value = redacted.value;
                             }
                             if (label && value) {
                                 data.push({ label, value });
@@ -1502,10 +1642,14 @@ function exportBerichtAsPdf(berichtContainer) {
         }
         
         // Haal de bericht-html op
-        const berichtHtml = berichtContainer.querySelector('.bericht-html');
+        const berichtHtml = berichtContainer.querySelector
+            ? berichtContainer.querySelector('.bericht-html')
+            : (berichtContainer.classList && berichtContainer.classList.contains('bericht-html')
+                ? berichtContainer
+                : null);
         if (berichtHtml) {
-            // Haal de tekst op uit bericht-html
-            const text = berichtHtml.innerText || berichtHtml.textContent || '';
+            // Haal de tekst op uit bericht-html (optioneel BSN redactie alleen in export-string)
+            const text = maybeRedact(berichtHtml.innerText || berichtHtml.textContent || '');
             
             // Zorg dat font size 9 is voor de brief tekst
             doc.setFontSize(9);
@@ -1528,7 +1672,8 @@ function exportBerichtAsPdf(berichtContainer) {
         }
         
         // Genereer en download PDF
-        const fileName = `brief_${new Date().toISOString().slice(0, 10)}.pdf`;
+        const suffix = opts.redactBsn ? '_geen_bsn' : '';
+        const fileName = `brief_${new Date().toISOString().slice(0, 10)}${suffix}.pdf`;
         doc.save(fileName);
         
         console.log('Brief geëxporteerd als PDF:', fileName);
@@ -1539,23 +1684,31 @@ function exportBerichtAsPdf(berichtContainer) {
     }
 }
 
-// Observer voor brief modals
+// Observer voor brief modals (ook als bericht-html later verschijnt)
 const briefModalObserver = new MutationObserver((mutations) => {
+    let shouldTry = false;
     mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
-            if (node.nodeType === 1) { // Element node
-                // Check of er een brief modal is toegevoegd
-                if (node.classList && node.classList.contains('modal-dialog')) {
-                    setTimeout(addPdfExportButton, 100);
-                }
-                // Check ook child nodes
-                const modalDialogs = node.querySelectorAll ? node.querySelectorAll('.modal-dialog') : [];
-                modalDialogs.forEach(() => {
-                    setTimeout(addPdfExportButton, 100);
-                });
+            if (node.nodeType !== 1) return;
+            if (
+                (node.classList && (
+                    node.classList.contains('modal-dialog') ||
+                    node.classList.contains('toon-bericht-container') ||
+                    node.classList.contains('bericht-html') ||
+                    node.classList.contains('berichtsoort-med-container')
+                )) ||
+                (node.querySelector && node.querySelector(
+                    '.modal-dialog, .toon-bericht-container, .bericht-html, .berichtsoort-med-container'
+                ))
+            ) {
+                shouldTry = true;
             }
         });
     });
+    if (shouldTry) {
+        setTimeout(addPdfExportButton, 100);
+        setTimeout(addPdfExportButton, 500);
+    }
 });
 
 // Start observer
@@ -1974,160 +2127,201 @@ loadGlobalOptions(function(options) {
 });
 
 ///////////////////////////////// MEDICIJN MARKERINGEN //////////////////////////////////////////////////////////////
+// Autorisatielijst: arceer risico-medicatie. Bricks DOM wisselt containers; match op
+// stabiele classes (.rapport44-recept-regel + title) en normaliseer diakritische
+// tekens (codeïne vs CODEINE). Geen API — puur DOM.
+
+const MEDICIJN_MARK_ATTR = 'data-bricks-infused-medicijn';
+
+const MEDICIJN_CATEGORIES = [
+    {
+        id: 'opiaat',
+        className: 'medicijn-opiaat',
+        color: '#ffe4cc',
+        keywords: [
+            'morfine', 'oxycodon', 'fentanyl', 'codeine', 'codeïne', 'tramadol',
+            'buprenorfine', 'methadon', 'hydromorfon', 'pethidine', 'diamorfine'
+        ]
+    },
+    {
+        id: 'benzodiazepine',
+        className: 'medicijn-benzodiazepine',
+        color: '#fff2cc',
+        keywords: [
+            'oxazepam', 'temazepam', 'bromazepam', 'lorazepam', 'diazepam', 'alprazolam',
+            'clonazepam', 'midazolam', 'nitrazepam', 'flunitrazepam', 'triazolam',
+            'zolpidem', 'zopiclon'
+        ]
+    },
+    {
+        id: 'adhd',
+        className: 'medicijn-adhd',
+        color: '#f0f8cc',
+        keywords: [
+            'methylfenidaat', 'dexamfetamine', 'lisdexamfetamine', 'atomoxetine', 'guanfacine',
+            'clonidine', 'concerta', 'ritalin', 'medikinet', 'equasym', 'focalin', 'adderall',
+            'vyvanse', 'strattera', 'intuniv', 'kapvay'
+        ]
+    },
+    {
+        id: 'methotrexaat',
+        className: 'medicijn-methotrexaat',
+        color: '#ffcccc',
+        keywords: ['methotrexaat', 'amiodaron']
+    }
+];
+
+const MEDICIJN_ALL_CLASSES = MEDICIJN_CATEGORIES.map((c) => c.className);
+
+function medicijn_normalize(text) {
+    return String(text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+function medicijn_findRapportRoot() {
+    // Oude selector (pre-2026): .autorisatieview.controls .area-rapportdetails
+    const legacy = document.querySelector('.autorisatieview.controls .area-rapportdetails');
+    if (legacy && legacy.offsetParent !== null) return legacy;
+
+    const scroll = document.querySelector('.rapport-nothtml-content-scroll');
+    if (scroll && scroll.offsetParent !== null) return scroll;
+
+    const container = document.querySelector('.rapport-nothtml-container');
+    if (container && container.offsetParent !== null) return container;
+
+    // Laatste redmiddel op autorisatie-route: elk zichtbaar recept-blok
+    if ((window.location.pathname || '').includes('/autorisatie')) {
+        const any = document.querySelector('.rapport44-recept');
+        if (any) return any.closest('.widget-content, .rapport-nothtml-container, main, body') || document.body;
+    }
+    return null;
+}
+
+function medicijn_findNameEl(receptRegel) {
+    return (
+        receptRegel.querySelector('.cursor-pointer[title="Bekijk voorschrijfgeschiedenis"]') ||
+        receptRegel.querySelector('[title="Bekijk voorschrijfgeschiedenis"]') ||
+        receptRegel.querySelector('.cursor-pointer')
+    );
+}
+
+function medicijn_clearRegel(receptRegel) {
+    receptRegel.style.backgroundColor = '';
+    receptRegel.classList.remove(...MEDICIJN_ALL_CLASSES);
+    receptRegel.removeAttribute(MEDICIJN_MARK_ATTR);
+}
+
 function medicijn_markeringen() {
-    console.log("medicijn_markeringen called");
-    
-    loadGlobalOptions(function(options) {
+    console.log('medicijn_markeringen called');
+
+    loadGlobalOptions(function (options) {
         if (!options.medicijnMarkeringen) {
-            console.log("Medicijn markeringen disabled, skipping");
+            console.log('Medicijn markeringen disabled, skipping');
             return;
         }
-        
-        // Controleer of .autorisatiereview.controls .area-rapportdetails zichtbaar is
-        const rapportDetails = document.querySelector('.autorisatieview.controls .area-rapportdetails');
-        if (!rapportDetails || rapportDetails.style.display === 'none' || rapportDetails.offsetParent === null) {
-            console.log("Rapport details not visible, skipping medicijn markeringen");
+
+        const root = medicijn_findRapportRoot();
+        if (!root) {
+            console.log('Rapport/recept root not found, skipping medicijn markeringen');
             return;
         }
-    
-    console.log("Rapport details visible, processing medicijn markeringen");
-    
-    // Zoek alle .rapport44-recept elementen
-    const recepten = rapportDetails.querySelectorAll('.rapport44-recept');
-    console.log(`Found ${recepten.length} recepten to process`);
-    
-    recepten.forEach((recept, index) => {
-        //console.log(`Processing recept ${index + 1}`);
-        
-        // Zoek alle onderliggende divs met class .rapport44-recept-regel
-        const receptRegels = recept.querySelectorAll('.rapport44-recept-regel');
-        if (receptRegels.length === 0) {
-            //console.log(`No .rapport44-recept-regel found for recept ${index + 1}`);
-            return;
-        }
-        
-        console.log(`Found ${receptRegels.length} recept-regel elements in recept ${index + 1}`);
-        
-        // Verwerk elke recept-regel
-        receptRegels.forEach((receptRegel, regelIndex) => {
-            // Reset bestaande markeringen
-            receptRegel.style.backgroundColor = '';
-            receptRegel.classList.remove('medicijn-opiaat', 'medicijn-benzodiazepine', 'medicijn-methotrexaat');
-            
-            // Zoek de medicijnnaam (in de div met cursor-pointer binnen deze recept-regel)
-            const medicijnDiv = receptRegel.querySelector('.cursor-pointer[title="Bekijk voorschrijfgeschiedenis"]');
-            if (!medicijnDiv) {
-                //console.log(`No medicijn div found for recept ${index + 1}, regel ${regelIndex + 1}`);
-                return;
-            }
-            
-            const medicijnNaam = medicijnDiv.textContent.trim();
-            console.log(`Medicijn naam: ${medicijnNaam}`);
-            
-            // Controleer op opiaten
-            const opiaatKeywords = ['morfine', 'oxycodon', 'fentanyl', 'codeïne', 'tramadol', 'buprenorfine', 'methadon', 'hydromorfon', 'pethidine', 'diamorfine'];
-            const isOpiaat = opiaatKeywords.some(keyword => 
-                medicijnNaam.toLowerCase().includes(keyword.toLowerCase())
-            );
-            
-            if (isOpiaat) {
-                console.log(`Opiaat gevonden: ${medicijnNaam}`);
-                receptRegel.style.backgroundColor = '#ffe4cc'; // Pastel oranje
-                receptRegel.classList.add('medicijn-opiaat');
-            }
-            
-            // Controleer op benzodiazepinen
-            const benzodiazepineKeywords = ['oxazepam', 'temazepam', 'bromazepam', 'lorazepam', 'diazepam', 'alprazolam', 'clonazepam', 'midazolam', 'nitrazepam', 'flunitrazepam', 'triazolam', 'zolpidem', 'zopiclon'];
-            const isBenzodiazepine = benzodiazepineKeywords.some(keyword => 
-                medicijnNaam.toLowerCase().includes(keyword.toLowerCase())
-            );
-            
-            if (isBenzodiazepine) {
-                console.log(`Benzodiazepine gevonden: ${medicijnNaam}`);
-                receptRegel.style.backgroundColor = '#fff2cc'; // Pastel geel
-                receptRegel.classList.add('medicijn-benzodiazepine');
-            }
-            
-            // Controleer op ADHD medicatie
-            const adhdKeywords = ['methylfenidaat', 'dexamfetamine', 'lisdexamfetamine', 'atomoxetine', 'guanfacine', 'clonidine', 'concerta', 'ritalin', 'medikinet', 'equasym', 'focalin', 'adderall', 'vyvanse', 'strattera', 'intuniv', 'kapvay'];
-            const isAdhd = adhdKeywords.some(keyword => 
-                medicijnNaam.toLowerCase().includes(keyword.toLowerCase())
-            );
-            
-            if (isAdhd) {
-                console.log(`ADHD medicatie gevonden: ${medicijnNaam}`);
-                receptRegel.style.backgroundColor = '#f0f8cc'; // Pastel lichtgroen
-                receptRegel.classList.add('medicijn-adhd');
-            }
-            
-            // Controleer op methotrexaat
-            const methotrexaatKeywords = ['methotrexaat','amiodaron'];
-            const isMethotrexaat = methotrexaatKeywords.some(keyword => 
-                medicijnNaam.toLowerCase().includes(keyword.toLowerCase())
-            );
-            
-            if (isMethotrexaat) {
-                console.log(`Methotrexaat gevonden: ${medicijnNaam}`);
-                receptRegel.style.backgroundColor = '#ffcccc'; // Pastel rood
-                receptRegel.classList.add('medicijn-methotrexaat');
-            }
+
+        const recepten = root.querySelectorAll('.rapport44-recept');
+        console.log(`Found ${recepten.length} recepten to process`);
+        if (!recepten.length) return;
+
+        recepten.forEach((recept) => {
+            const receptRegels = recept.querySelectorAll('.rapport44-recept-regel');
+            receptRegels.forEach((receptRegel) => {
+                medicijn_clearRegel(receptRegel);
+
+                const medicijnDiv = medicijn_findNameEl(receptRegel);
+                if (!medicijnDiv) return;
+
+                const medicijnNaam = medicijnDiv.textContent.trim();
+                const naamNorm = medicijn_normalize(medicijnNaam);
+
+                for (const cat of MEDICIJN_CATEGORIES) {
+                    const hit = cat.keywords.some((kw) => naamNorm.includes(medicijn_normalize(kw)));
+                    if (!hit) continue;
+                    console.log(`${cat.id} gevonden: ${medicijnNaam}`);
+                    receptRegel.style.backgroundColor = cat.color;
+                    receptRegel.classList.add(cat.className);
+                    receptRegel.setAttribute(MEDICIJN_MARK_ATTR, cat.id);
+                    break; // één categorie per regel (opiaat > benzo > …)
+                }
+
+                // "1 herhalingen" accent (exacte tekst zoals Bricks toont)
+                const herhalingenDiv = receptRegel.querySelector('.flex-grow');
+                if (herhalingenDiv && herhalingenDiv.textContent.trim() === '1 herhalingen') {
+                    herhalingenDiv.style.backgroundColor = '#ff8c00';
+                    herhalingenDiv.style.padding = '2px 4px';
+                    herhalingenDiv.style.borderRadius = '3px';
+                }
+            });
         });
-        
-        // Controleer op "1 herhalingen" en markeer deze tekst in elke recept-regel
-        receptRegels.forEach((receptRegel, regelIndex) => {
-            const herhalingenDiv = receptRegel.querySelector('.flex-grow');
-            if (herhalingenDiv && herhalingenDiv.textContent.trim() === '1 herhalingen') {
-                console.log(`1 herhalingen gevonden in recept ${index + 1}, regel ${regelIndex + 1}`);
-                herhalingenDiv.style.backgroundColor = '#ff8c00'; // Oranje
-                herhalingenDiv.style.padding = '2px 4px';
-                herhalingenDiv.style.borderRadius = '3px';
-            }
-        });
-    });
     });
 }
 
-// Observer voor het toevoegen van de "Toon resultaat" knop
-const toonResultaat_observer = new MutationObserver(() => {
-    addToonResultaatListener();
-});
-
-// Start de observer
-toonResultaat_observer.observe(document.body, { 
-    childList: true, 
-    subtree: true
-});
-
-// Initiële check
-addToonResultaatListener();
+function medicijn_scheduleMarkeringen(delayMs) {
+    const wait = delayMs != null ? delayMs : 200;
+    clearTimeout(medicijn_scheduleMarkeringen._timer);
+    medicijn_scheduleMarkeringen._timer = setTimeout(() => medicijn_markeringen(), wait);
+}
 
 function addToonResultaatListener() {
-    // Zoek naar alle buttons in het gebied
-    const buttons = document.querySelectorAll('.autorisatieview.controls .area-rapportselectie button');
+    const buttons = document.querySelectorAll('button');
     let toonResultaatBtn = null;
-    
-    // Zoek de button met de tekst "Toon resultaat"
-    buttons.forEach(button => {
-        if (button.textContent.includes('Toon resultaat')) {
+    buttons.forEach((button) => {
+        // Breder dan oude .autorisatieview.controls .area-rapportselectie
+        if (button.textContent && button.textContent.includes('Toon resultaat')) {
             toonResultaatBtn = button;
         }
     });
-    
+
     if (toonResultaatBtn && !toonResultaatBtn.hasAttribute('data-medicijn-listener')) {
-        console.log("Toon resultaat knop gevonden, voeg listener toe");
-        
-        // Markeer dat we al een listener hebben toegevoegd
+        console.log('Toon resultaat knop gevonden, voeg listener toe');
         toonResultaatBtn.setAttribute('data-medicijn-listener', 'true');
-        
-        // Voeg event listener toe
-        toonResultaatBtn.addEventListener('click', function() {
-            console.log("Toon resultaat knop geklikt, start medicijn markeringen na 1000ms");
-            setTimeout(() => {
-                medicijn_markeringen();
-            }, 1000);
+        toonResultaatBtn.addEventListener('click', function () {
+            console.log('Toon resultaat knop geklikt, plan medicijn markeringen');
+            medicijn_scheduleMarkeringen(400);
+            medicijn_scheduleMarkeringen(1200);
         });
     }
 }
+
+// Observer: knop + wanneer receptregels in de DOM komen/wijzigen
+const toonResultaat_observer = new MutationObserver((mutations) => {
+    addToonResultaatListener();
+    const relevant = mutations.some((m) => {
+        const nodes = []
+            .concat(Array.from(m.addedNodes || []))
+            .concat(Array.from(m.removedNodes || []));
+        return nodes.some((n) => {
+            if (!n || n.nodeType !== 1) return false;
+            const el = n;
+            return (
+                (el.classList && (
+                    el.classList.contains('rapport44-recept') ||
+                    el.classList.contains('rapport44-recept-regel') ||
+                    el.classList.contains('rapport-nothtml-content-scroll')
+                )) ||
+                (el.querySelector && el.querySelector('.rapport44-recept-regel, .rapport44-recept'))
+            );
+        });
+    });
+    if (relevant) medicijn_scheduleMarkeringen(250);
+});
+
+toonResultaat_observer.observe(document.body, {
+    childList: true,
+    subtree: true
+});
+
+addToonResultaatListener();
+medicijn_scheduleMarkeringen(500);
 
 ///////////////////////////////// ZORGDOMEIN CUSTOM //////////////////////////////////////////////////////////////
 

@@ -248,4 +248,27 @@ await bricksBridge.waitUntilReady()
 - `declareren` / einde-consult helpers (global modal selectors).
 - `content_uprevent.js` scrapes episoden/medicatie/journaal from the page — if multiple dossiers stay mounted in the DOM, scope to the active consult shell (`patientId` from bridge/URL) before reading.
 
+### Medicijn-markeringen (autorisatie)
+
+DOM-only feature. Stable hooks (2026-09):
+
+- Rows: `.rapport44-recept` / `.rapport44-recept-regel`
+- Name: `[title="Bekijk voorschrijfgeschiedenis"]` (often also `.cursor-pointer`)
+- Results root: `.rapport-nothtml-content-scroll` (legacy `.autorisatieview…area-rapportdetails` is gone)
+
+Match drug names with NFD + strip diacritics so `codeïne` matches `CODEINE`.
+
 When adding features: **resolve active patientId first**, then API or scoped DOM — never bare `document.querySelectorAll` for consult widgets.
+
+### Brief PDF export (`ToonBericht`)
+
+Infused adds a caret (`.btn-pdf-export-caret`) next to Bricks’ **Export** in the brief modal footer — not a separate PDF button. Menu: **Export** (native click), **PDF**, **PDF zonder BSN**.
+
+BSN redaction applies only to the export string (header + `.bericht-html` text), never the live DOM:
+
+- Header fields: label `BSN` and value are separate DOM nodes — `redactBsnField` masks the value
+- `BSN` + optional `:` + 9 digits (incl. across newlines) → `BSN: *********`
+- dotted `0000.00.000` → `****.**.***`
+- bare `\b\d{9}\b` → `*********` (precaution; BSN length)
+
+Option: `pdfExport` in global options.
