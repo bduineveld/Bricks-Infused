@@ -22,22 +22,114 @@ const UPREVENT_CALCULATORS = [
 ];
 
 function uprevent_addShortcut() {
-    const bar = document.querySelector('.side-controls .shortcutsbar');
-    if (!bar) return;
-    if (bar.querySelector('[data-shortcut="U-PRE"]')) return;
+    const bars = document.querySelectorAll('.side-controls .shortcutsbar');
+    bars.forEach((bar) => {
+        if (bar.querySelector('[data-shortcut="U-PRE"]')) return;
 
-    const shortcut = document.createElement('div');
-    shortcut.className = 'shortcut';
-    shortcut.title = 'U-Prevent integratie';
-    shortcut.setAttribute('data-shortcut', 'U-PRE');
-    shortcut.innerHTML = '<div class="caption" style="border-color: rgb(120, 100, 200);">U-PRE</div>';
-    shortcut.addEventListener('click', uprevent_onClick);
-    bar.appendChild(shortcut);
-    console.log('U-PRE shortcut toegevoegd aan shortcutsbar');
+        const shortcut = document.createElement('div');
+        shortcut.className = 'shortcut';
+        shortcut.title = 'U-Prevent integratie';
+        shortcut.setAttribute('data-shortcut', 'U-PRE');
+        shortcut.innerHTML = '<div class="caption" style="border-color: rgb(120, 100, 200);">U-PRE</div>';
+        shortcut.addEventListener('click', uprevent_onClick);
+        bar.appendChild(shortcut);
+        console.log('U-PRE shortcut toegevoegd aan shortcutsbar');
+    });
 }
 
 function uprevent_removeShortcut() {
     document.querySelectorAll('.side-controls .shortcutsbar [data-shortcut="U-PRE"]').forEach((n) => n.remove());
+}
+
+// --- Actieve consult-scope -----------------------------------------------------
+// Bricks houdt meerdere dossiers in de DOM. Kale document.querySelector* pakt
+// het eerste episoden/journaal/header-blok (vaak de verkeerde patiënt).
+// Scope: patientId uit URL of bridge, daarna de kleinste shell die bij die
+// patiënt hoort. Liever ontbrekende data dan data van een ander dossier.
+
+function uprevent_activePatientIdFromUrl() {
+    const m = (window.location.pathname || '').match(/\/s\/consult\/(\d+)/i)
+        || (window.location.pathname || '').match(/\/consult\/(\d+)/i);
+    return m ? m[1] : null;
+}
+
+function uprevent_isDisplayed(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+}
+
+function uprevent_hostHasPatientId(host, patientId) {
+    if (!host || !patientId || !host.querySelector) return false;
+    return !!host.querySelector(
+        `a[href*="/consult/${patientId}"], a[href*="/s/consult/${patientId}"], [href*="/s/consult/${patientId}"]`
+    );
+}
+
+function uprevent_dossierCount(el) {
+    if (!el || !el.querySelectorAll) return 0;
+    return Math.max(
+        el.querySelectorAll('.patient-header2-left').length,
+        el.querySelectorAll('.episoden-content').length,
+        el.querySelectorAll('.medicatieprofiel-widget').length,
+        el.querySelectorAll('.journaal').length
+    );
+}
+
+function uprevent_widenToSingleDossier(seed) {
+    if (!seed) return document;
+    let node = seed;
+    let best = seed;
+    while (node && node !== document.body && node !== document.documentElement) {
+        if (uprevent_dossierCount(node) > 1) return best;
+        best = node;
+        node = node.parentElement;
+    }
+    return best;
+}
+
+function uprevent_pickSeed(patientId) {
+    const seeds = Array.from(document.querySelectorAll(
+        '.patient-header2-left, .episoden-content, .medicatieprofiel-widget, .journaal, .layout-renderer.layout-grid'
+    ));
+    if (!seeds.length) return null;
+
+    if (patientId) {
+        const matched = seeds.filter((el) => {
+            const host = el.closest('[class*="consult"], .sidebar-content, .layout-content, .page-content, main')
+                || el.parentElement
+                || el;
+            return uprevent_hostHasPatientId(host, patientId) || uprevent_hostHasPatientId(el, patientId);
+        });
+        if (matched.length) {
+            return matched.find(uprevent_isDisplayed) || matched[0];
+        }
+    }
+
+    const visible = seeds.filter(uprevent_isDisplayed);
+    return visible.find((el) =>
+        el.classList.contains('patient-header2-left')
+        || el.classList.contains('journaal')
+        || el.classList.contains('layout-renderer')
+    ) || visible[0] || seeds[0];
+}
+
+function uprevent_findConsultRoot(patientId) {
+    const seed = uprevent_pickSeed(patientId);
+    if (!seed) return document;
+    return uprevent_widenToSingleDossier(seed);
+}
+
+function uprevent_one(root, selector) {
+    const scope = root && root.querySelector ? root : document;
+    return scope.querySelector(selector);
+}
+
+function uprevent_all(root, selector) {
+    const scope = root && root.querySelectorAll ? root : document;
+    return scope.querySelectorAll(selector);
 }
 
 // --- Patiëntheader (Bricks patient-header2-left) --------------------------------
@@ -73,8 +165,8 @@ function uprevent_ageOnDateFromDob(dobStr, refDateStr) {
     return age;
 }
 
-function uprevent_parsePatientHeader() {
-    const header = document.querySelector('.patient-header2-left');
+function uprevent_parsePatientHeader(root) {
+    const header = uprevent_one(root, '.patient-header2-left');
     let age = null;
     let dobStr = null;
     if (!header) {
@@ -99,8 +191,8 @@ function uprevent_parsePatientHeader() {
 
 // Geslacht uit aanhef in .naam: Dhr. = man, Mw. = vrouw, Dhr./Mw. (of Dhr/Mw) = onbekend.
 // Retourneert { line: string } met een regel voor de export, of null als niet te bepalen.
-function uprevent_detectSexLine() {
-    const naamEl = document.querySelector('.patient-header2-left .area-profile-fullname .naam');
+function uprevent_detectSexLine(root) {
+    const naamEl = uprevent_one(root, '.patient-header2-left .area-profile-fullname .naam');
     if (!naamEl) return null;
     const naamText = (naamEl.textContent || '').replace(/\(\s*\d{1,3}\s*\)/g, '').trim();
     if (!naamText) return null;
@@ -159,7 +251,7 @@ function uprevent_isDm2EpisodeCode(codeRaw) {
     return false;
 }
 
-function uprevent_collectEpisodeIcpcCodes() {
+function uprevent_collectEpisodeIcpcCodes(root) {
     const codes = [];
     const seen = new Set();
     const pushCode = (raw) => {
@@ -170,12 +262,12 @@ function uprevent_collectEpisodeIcpcCodes() {
     };
 
     // Layout variant 1 (oude weergave): episode-icpc / icpc-badge blok.
-    document.querySelectorAll('.episoden-content .episode-icpc .split-text span, .episoden-content .icpc-badge .split-text span').forEach((el) => {
+    uprevent_all(root, '.episoden-content .episode-icpc .split-text span, .episoden-content .icpc-badge .split-text span').forEach((el) => {
         pushCode(el.textContent);
     });
 
     // Layout variant 2 (uitgebreide/grid-weergave): code staat in een losse split-text link.
-    document.querySelectorAll('.episoden-content .episoden-overzicht .split-text').forEach((el) => {
+    uprevent_all(root, '.episoden-content .episoden-overzicht .split-text').forEach((el) => {
         const txt = (el.textContent || '').trim();
         // ICPC patroon zoals K99.01, T90.02, K75, A62, etc.
         const m = txt.match(/\b([A-Z]\d{2}(?:\.\d{2})?)\b/i);
@@ -248,12 +340,12 @@ function uprevent_hvzPhrasesFromCodes(hvzCodes) {
     return Array.from(phrases);
 }
 
-function uprevent_collectDiabetesEpisodeDates() {
+function uprevent_collectDiabetesEpisodeDates(root) {
     const dates = [];
     const seen = new Set();
 
     // Veel episode-regels bevatten in title: "T90.02 ... Datum: dd-mm-jjjj"
-    document.querySelectorAll('.episoden-content .episode-name[title], .episoden-content .cursor-help[title]').forEach((el) => {
+    uprevent_all(root, '.episoden-content .episode-name[title], .episoden-content .cursor-help[title]').forEach((el) => {
         const title = (el.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
         if (!title) return;
         const codeMatch = title.match(/\b([A-Z]\d{2}(?:\.\d{2})?)\b/i);
@@ -270,7 +362,7 @@ function uprevent_collectDiabetesEpisodeDates() {
 
     // Fallback: scan losse split-text velden in de episode widget.
     if (!dates.length) {
-        const text = (document.querySelector('.episoden-content')?.textContent || '');
+        const text = (uprevent_one(root, '.episoden-content')?.textContent || '');
         const dm2Mentioned = /\bT90(?:\.02)?\b/i.test(text) && !/\bT90\.01\b/i.test(text);
         if (dm2Mentioned) {
             const allDates = text.match(/\b\d{1,2}-\d{1,2}-\d{4}\b/g) || [];
@@ -309,11 +401,11 @@ function uprevent_yearsSinceDate(dateStr) {
     return years;
 }
 
-function uprevent_collectHvzEpisodeDates() {
+function uprevent_collectHvzEpisodeDates(root) {
     const dates = [];
     const seen = new Set();
 
-    document.querySelectorAll('.episoden-content .episode-name[title], .episoden-content .cursor-help[title]').forEach((el) => {
+    uprevent_all(root, '.episoden-content .episode-name[title], .episoden-content .cursor-help[title]').forEach((el) => {
         const title = (el.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
         if (!title) return;
         const codeMatch = title.match(/\b([A-Z]\d{2}(?:\.\d{2})?)\b/i);
@@ -329,7 +421,7 @@ function uprevent_collectHvzEpisodeDates() {
     });
 
     if (!dates.length) {
-        const text = (document.querySelector('.episoden-content')?.textContent || '');
+        const text = (uprevent_one(root, '.episoden-content')?.textContent || '');
         // Houdt synchroon met uprevent_isHvzCode: K92 alleen .02 (of bare K92),
         // niet K92.01. K74/K75/K76/K89/K90 alle subcodes; K99 alleen .01.
         const hvzMentioned = /\b(?:K74|K75|K76|K89|K90|K92\.02|K92(?!\.)|K99\.01)\b/i.test(text);
@@ -375,10 +467,8 @@ function uprevent_splitCombinationDrugLine(line) {
 // alleen de datum- en doseringsregels eruit, zodat U-Prevent's drug-regexen
 // (INN + merknaam) precies op die preparaatnamen kunnen matchen zonder dat
 // omringende DOM-tekst (apotheek, herhalingen, statusdots) meelekt.
-function uprevent_collectMedicationText() {
-    const container = document.querySelector(
-        '.medicatieprofiel-widget [data-container="Chronisch"]'
-    );
+function uprevent_collectMedicationText(root) {
+    const container = uprevent_one(root, '.medicatieprofiel-widget [data-container="Chronisch"]');
     if (!container) return '';
 
     const items = container.querySelectorAll('.medicatieprofiel-item');
@@ -421,7 +511,7 @@ function uprevent_collectMedicationText() {
 // de export (privacy); leeftijd blijft wel als getal. Bloeddruk als één regel
 // zodat de U-Prevent-parser hem via RR/bloeddruk-patroon herkent. Eenheden
 // worden expliciet meegestuurd zodat de parser ze niet hoeft te raden.
-function uprevent_collectText() {
+function uprevent_collectText(root) {
     const lines = [];
     const seen = new Set();
     const push = (s) => {
@@ -430,13 +520,13 @@ function uprevent_collectText() {
         lines.push(s);
     };
 
-    const { age: headerAge, dobStr } = uprevent_parsePatientHeader();
+    const { age: headerAge, dobStr } = uprevent_parsePatientHeader(root);
     if (headerAge != null) push(`leeftijd: ${headerAge}`);
 
-    const sexLine = uprevent_detectSexLine();
+    const sexLine = uprevent_detectSexLine(root);
     if (sexLine) push(sexLine.line);
 
-    const icpcCodes = uprevent_collectEpisodeIcpcCodes();
+    const icpcCodes = uprevent_collectEpisodeIcpcCodes(root);
     const ep = uprevent_episodeFlagsFromCodes(icpcCodes);
 
     // We werken puur op aan/afwezigheid van ICPC-codes. Niets uitschrijven
@@ -465,7 +555,7 @@ function uprevent_collectText() {
 
     // Alleen bij DM2: stuur leeftijd op moment van diagnose mee.
     if (ep.dm2 && dobStr) {
-        const dm2Dates = uprevent_collectDiabetesEpisodeDates();
+        const dm2Dates = uprevent_collectDiabetesEpisodeDates(root);
         const firstDm2Date = uprevent_pickEarliestDate(dm2Dates);
         if (firstDm2Date) {
             const ageAtDm2 = uprevent_ageOnDateFromDob(dobStr, firstDm2Date);
@@ -477,7 +567,7 @@ function uprevent_collectText() {
 
     // Bij HVZ: jaren sinds het eerste vasculaire event (oudste HVZ-episode).
     if (ep.hvz) {
-        const hvzDates = uprevent_collectHvzEpisodeDates();
+        const hvzDates = uprevent_collectHvzEpisodeDates(root);
         const firstHvzDate = uprevent_pickEarliestDate(hvzDates);
         if (firstHvzDate) {
             const yearsSinceFirstEvent = uprevent_yearsSinceDate(firstHvzDate);
@@ -488,7 +578,7 @@ function uprevent_collectText() {
     }
 
     // Journaal entries are rendered top = newest, so document order = newest-first.
-    const regels = document.querySelectorAll('.journaal-contact-regel .split-text');
+    const regels = uprevent_all(root, '.journaal-contact-regel .split-text');
     const labs = {
         sys: null, dia: null,
         hba1c: null, hba1cUnit: null,
@@ -627,7 +717,7 @@ function uprevent_collectText() {
 
     // Chronische medicatie als kleine, schone lijst (één preparaat per regel).
     // U-Prevent's drug-regexen herkennen zelf INN's én merknamen.
-    const med = uprevent_collectMedicationText();
+    const med = uprevent_collectMedicationText(root);
     if (med) {
         push('--- Chronische medicatie ---');
         push(med);
@@ -637,12 +727,12 @@ function uprevent_collectText() {
 }
 
 // Leeftijd uit patiëntheader (haakjes na naam of geboortedatum dd-mm-jjjj).
-function uprevent_detectAge() {
-    const { age, dobStr } = uprevent_parsePatientHeader();
+function uprevent_detectAge(root) {
+    const { age, dobStr } = uprevent_parsePatientHeader(root);
     if (age != null) return age;
     if (dobStr) return uprevent_ageFromDobDdMmYyyy(dobStr);
-    const headerText = (document.querySelector('.patient-header2-left')?.textContent
-        || document.querySelector('.patientcard, .patient-header, .patientinfo')?.textContent
+    const headerText = (uprevent_one(root, '.patient-header2-left')?.textContent
+        || uprevent_one(root, '.patientcard, .patient-header, .patientinfo')?.textContent
         || '');
     const yrs = headerText.match(/\b(\d{1,3})\s*(?:jaar|jr)\b/i);
     if (yrs) {
@@ -707,11 +797,24 @@ function uprevent_onKeyDown(e) {
     if (e.key === 'Escape') uprevent_closeModal();
 }
 
-function uprevent_onClick(e) {
+async function uprevent_onClick(e) {
     if (e) { e.preventDefault(); e.stopPropagation(); }
-    const text = uprevent_collectText();
-    const age = uprevent_detectAge();
-    const episodeFlags = uprevent_episodeFlagsFromCodes(uprevent_collectEpisodeIcpcCodes());
+
+    let patientId = uprevent_activePatientIdFromUrl();
+    if (window.bricksBridge && typeof window.bricksBridge.getActiveContext === 'function') {
+        try {
+            const ctx = await window.bricksBridge.getActiveContext();
+            if (ctx && ctx.patientId > 0) patientId = String(ctx.patientId);
+        } catch (err) {
+            console.warn('U-Prevent: bridge-context mislukt, URL/DOM fallback', err);
+        }
+    }
+
+    const root = uprevent_findConsultRoot(patientId);
+    console.log('U-Prevent scrape scope', { patientId, rootClass: root && root.className });
+    const text = uprevent_collectText(root);
+    const age = uprevent_detectAge(root);
+    const episodeFlags = uprevent_episodeFlagsFromCodes(uprevent_collectEpisodeIcpcCodes(root));
     uprevent_showPicker(text, age, episodeFlags);
 }
 

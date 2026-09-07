@@ -100,7 +100,7 @@ B.taken.deleteTaak(taakId, askForCollectieDelete)
 
 UI store (when `P` available): `P.taken`, `P.settings.taken.filter`, `setFilter` on taken page state.
 
-Settings export/import historically faked the Taken UI; prefer `B.taken.*` once bridge is ready.
+Settings export/import uses `B.taken.*` (no Taken-page clicks): find/create taak `Bricks Infused Instellingen` (status Afgehandeld, toegewezen aan jezelf) and store compact JSON in `Omschrijving` (max 2000 chars).
 
 ---
 
@@ -233,7 +233,11 @@ Client helpers:
 ```js
 await bricksBridge.getActiveContext()
 await bricksBridge.navigate('/taken')
-await bricksBridge.doApi('Taken', 'NewTaak', {})
+await bricksBridge.whoAmI()
+await bricksBridge.takenNew()
+await bricksBridge.takenStore(taak, false, true)
+await bricksBridge.takenGet(taakId)
+await bricksBridge.takenGetByMedewerkerAndRol({ medewerkerId, rol: 'ToegewezenAan', inclGroep: true, statusFilter: ['Afgehandeld'], inclGesloten: true })
 await bricksBridge.toggleLayoutResize()
 await bricksBridge.startZorgdomeinVerwijzing({ patientId, episodelijstNodig: false })
 await bricksBridge.waitUntilReady()
@@ -243,10 +247,10 @@ await bricksBridge.waitUntilReady()
 
 ## Still DOM-based / multi-context risky (backlog)
 
-- Settings export/import via Taken UI (partially navigates via router now; filter/dialog still DOM).
+- Settings export/import via `B.taken.*` (no Taken UI).
 - `communicatie_changeContact` (global koppelinfo picker).
 - `declareren` / einde-consult helpers (global modal selectors).
-- `content_uprevent.js` scrapes episoden/medicatie/journaal from the page — if multiple dossiers stay mounted in the DOM, scope to the active consult shell (`patientId` from bridge/URL) before reading.
+- `content_uprevent.js` scrapes episoden/medicatie/journaal from the **active** consult shell (`patientId` from URL/`bricksBridge.getActiveContext`). Missing data is preferred over another dossier’s widgets.
 
 ### Medicijn-markeringen (autorisatie)
 
@@ -272,3 +276,7 @@ BSN redaction applies only to the export string (header + `.bericht-html` text),
 - bare `\b\d{9}\b` → `*********` (precaution; BSN length)
 
 Option: `pdfExport` in global options.
+
+### U-Prevent scrape
+
+`content_uprevent.js` resolves `patientId` (consult URL, then `bricksBridge.getActiveContext`) and scrapes only that consult shell: header, episoden, chronische medicatie, journaal. Shortcut is injected on every `.shortcutsbar`.

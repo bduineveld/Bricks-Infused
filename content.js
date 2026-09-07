@@ -14,824 +14,195 @@ let globalOptions = null;
 let optionsLoaded = false;
 let optionsTimestamp = null;
 
-// Navigeer naar Taken via Vue router (bridge); val terug op navbar-klik.
-function navigateToTaken(callback) {
-  const afterOnTaken = () => {
-    let checkCount = 0;
-    const maxChecks = 50;
-    const checkInterval = setInterval(() => {
-      checkCount++;
-      if (window.location.pathname.includes('/taken')) {
-        clearInterval(checkInterval);
-        if (callback) callback(true);
-      } else if (checkCount >= maxChecks) {
-        clearInterval(checkInterval);
-        if (callback) callback(false, 'Taken pagina niet geladen');
+// Instellingen delen via een Bricks-taak (API, geen Taken-UI).
+// Titel: "Bricks Infused Instellingen", status Afgehandeld, toegewezen aan jezelf.
+// Omschrijving heeft in Bricks een limiet van 2000 tekens (yP).
+
+const SETTINGS_TAAK_NAAM = 'Bricks Infused Instellingen';
+const SETTINGS_TAAK_MAX_LEN = 2000;
+
+function settings_sendStorageResponse(key, payload) {
+  chrome.storage.local.set({ [key]: payload });
+}
+
+async function settings_requireBridge() {
+  if (!window.bricksBridge) throw new Error('Bricks-bridge niet beschikbaar. Open een Bricks-pagina en herlaad.');
+  if (typeof window.bricksBridge.waitUntilReady === 'function') {
+    await window.bricksBridge.waitUntilReady(8000);
+  }
+}
+
+async function settings_getMedewerkerId() {
+  const me = await window.bricksBridge.whoAmI();
+  const id = parseInt(me && (me.MedewerkerId || me.Id), 10);
+  if (!(id > 0)) throw new Error('Kon huidige medewerker niet bepalen');
+  return id;
+}
+
+function settings_taakList(res) {
+  if (!res) return [];
+  if (Array.isArray(res.ReturnValue)) return res.ReturnValue;
+  if (Array.isArray(res)) return res;
+  return [];
+}
+
+async function settings_findExistingTaak(medewerkerId) {
+  const filters = [['Afgehandeld'], ['Open', 'Bezig']];
+  for (const statusFilter of filters) {
+    const res = await window.bricksBridge.takenGetByMedewerkerAndRol({
+      medewerkerId,
+      rol: 'ToegewezenAan',
+      inclGroep: true,
+      statusFilter,
+      inclGesloten: true
+    });
+    const hit = settings_taakList(res).find((t) => (t.Naam || '').trim() === SETTINGS_TAAK_NAAM);
+    if (hit && hit.Id > 0) {
+      try {
+        const full = await window.bricksBridge.takenGet(hit.Id);
+        return (full && full.ReturnValue) || hit;
+      } catch (e) {
+        return hit;
       }
-    }, 100);
-  };
+    }
+  }
+  return null;
+}
 
-  if (window.bricksBridge) {
-    window.bricksBridge.navigate('/taken').then(() => {
-      console.log('📤 Taken via Vue router');
-      afterOnTaken();
-    }).catch((err) => {
-      console.warn('Taken router navigatie mislukt, DOM fallback:', err);
-      navigateToTakenViaDomClick(afterOnTaken, callback);
+function settings_ensureSelfRelaties(taak, medewerkerId) {
+  taak.Relaties = Array.isArray(taak.Relaties) ? taak.Relaties : [];
+  if (!taak.Relaties.some((r) => r.Rol === 'ToegewezenAan')) {
+    taak.Relaties.push({ Rol: 'ToegewezenAan', Entiteit: 'Medewerker', EntiteitId: medewerkerId });
+  }
+  if (!taak.Relaties.some((r) => r.Rol === 'AangemaaktDoor')) {
+    taak.Relaties.push({ Rol: 'AangemaaktDoor', Entiteit: 'Medewerker', EntiteitId: medewerkerId });
+  }
+}
+
+function settings_stringify(settings) {
+  return JSON.stringify(settings);
+}
+
+function settings_parseOmschrijving(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function exportSettingsToBricks(settings, requestId) {
+  try {
+    await settings_requireBridge();
+    const json = settings_stringify(settings || {});
+    if (json.length > SETTINGS_TAAK_MAX_LEN) {
+      throw new Error(
+        `Instellingen te groot voor een Bricks-taak (${json.length} / ${SETTINGS_TAAK_MAX_LEN} tekens)`
+      );
+    }
+    const medewerkerId = await settings_getMedewerkerId();
+    let taak = await settings_findExistingTaak(medewerkerId);
+    if (!taak) {
+      const created = await window.bricksBridge.takenNew();
+      taak = (created && created.ReturnValue) || created;
+      if (!taak || typeof taak !== 'object') throw new Error('Nieuwe taak aanmaken mislukt');
+      taak.Naam = SETTINGS_TAAK_NAAM;
+      taak.DatumTijd = new Date();
+      taak.Prioriteit = taak.Prioriteit || 'Normaal';
+    }
+    settings_ensureSelfRelaties(taak, medewerkerId);
+    taak.Naam = SETTINGS_TAAK_NAAM;
+    taak.Omschrijving = json;
+    taak.Status = 'Afgehandeld';
+
+    const stored = await window.bricksBridge.takenStore(taak, false, true);
+    const storedId = stored && stored.ReturnValue;
+    if (!(storedId > 0)) {
+      throw new Error('Opslaan van taak mislukt');
+    }
+
+    settings_sendStorageResponse('exportSettingsResponse', {
+      requestId,
+      success: true,
+      handled: true
     });
-    return;
-  }
-  navigateToTakenViaDomClick(afterOnTaken, callback);
-}
-
-function navigateToTakenViaDomClick(afterOnTaken, callback) {
-  const takenLink = Array.from(document.querySelectorAll('.navbar-links a')).find(link => {
-    const span = link.querySelector('span');
-    return span && span.textContent.trim() === 'Taken';
-  });
-  if (!takenLink) {
-    console.log('❌ Taken knop niet gevonden');
-    if (callback) callback(false, 'Taken knop niet gevonden');
-    return;
-  }
-  console.log('📤 Klikken op Taken knop');
-  takenLink.click();
-  afterOnTaken();
-}
-
-function setTakenFilterAfgehandeld(callback) {
-  const toonDivs = Array.from(document.querySelectorAll('.widget-topbar .font-semibold'));
-  const toonDiv = toonDivs.find(div => div.textContent.trim() === 'Toon');
-
-  if (!toonDiv) {
-    console.log('❌ "Toon" div niet gevonden');
-    if (callback) callback(false, 'Toon div niet gevonden');
-    return;
-  }
-
-  const formDropdown = toonDiv.nextElementSibling;
-  if (!formDropdown || !formDropdown.classList.contains('form-dropdown')) {
-    console.log('❌ Form dropdown niet gevonden na Toon');
-    if (callback) callback(false, 'Form dropdown niet gevonden');
-    return;
-  }
-
-  const dropdownBtn = formDropdown.querySelector('.dropdownBtn');
-  if (!dropdownBtn) {
-    console.log('❌ Dropdown knop niet gevonden');
-    if (callback) callback(false, 'Dropdown knop niet gevonden');
-    return;
-  }
-
-  const input = formDropdown.querySelector('input.form-input.dropdown');
-  const currentValue = input ? input.value : '';
-
-  if (currentValue === 'Afgehandeld') {
-    if (callback) callback(true, currentValue);
-    return;
-  }
-
-  console.log('📤 Zet filter op "Afgehandeld"');
-  dropdownBtn.click();
-
-  let dropdownCheckCount = 0;
-  const maxDropdownChecks = 20;
-  const dropdownCheckInterval = setInterval(() => {
-    dropdownCheckCount++;
-    if (dropdownCheckCount >= maxDropdownChecks) {
-      clearInterval(dropdownCheckInterval);
-      if (callback) callback(false, 'Dropdown niet geopend');
-      return;
-    }
-
-    const dropdownItems = document.querySelector('.dropdown-items');
-    if (!dropdownItems || !dropdownItems.querySelector('ul')) {
-      return;
-    }
-
-    clearInterval(dropdownCheckInterval);
-
-    const afgehandeldItem = Array.from(dropdownItems.querySelectorAll('li')).find(li => {
-      const span = li.querySelector('span');
-      return span && span.textContent.trim() === 'Afgehandeld';
+  } catch (err) {
+    console.warn('Settings-export via Taken-API mislukt:', err);
+    settings_sendStorageResponse('exportSettingsResponse', {
+      requestId,
+      success: false,
+      handled: true,
+      error: (err && err.message) || String(err)
     });
-
-    if (!afgehandeldItem) {
-      if (callback) callback(false, 'Afgehandeld item niet gevonden');
-      return;
-    }
-
-    console.log('📤 Klikken op "Afgehandeld" in dropdown');
-    afgehandeldItem.click();
-    setTimeout(() => {
-      if (callback) callback(true, currentValue);
-    }, 500);
-  }, 100);
+  }
 }
 
-// Gemeenschappelijke functie om Taken pagina te openen en filter op Afgehandeld te zetten
-function openTakenAndSetFilter(callback) {
-  navigateToTaken((ok, err) => {
-    if (!ok) {
-      if (callback) callback(false, err || 'Taken navigatie mislukt');
+async function importSettingsFromBricks(requestId) {
+  try {
+    await settings_requireBridge();
+    const medewerkerId = await settings_getMedewerkerId();
+    const taak = await settings_findExistingTaak(medewerkerId);
+    if (!taak) {
+      settings_sendStorageResponse('importSettingsResponse', {
+        requestId,
+        success: true,
+        handled: true,
+        settings: null
+      });
       return;
     }
-    setTimeout(() => setTakenFilterAfgehandeld(callback), 300);
-  });
+    const parsed = settings_parseOmschrijving(taak.Omschrijving);
+    if (!parsed) {
+      throw new Error('Taak gevonden, maar inhoud is geen geldige instellingen-JSON');
+    }
+    settings_sendStorageResponse('importSettingsResponse', {
+      requestId,
+      success: true,
+      handled: true,
+      settings: parsed
+    });
+  } catch (err) {
+    console.warn('Settings-import via Taken-API mislukt:', err);
+    settings_sendStorageResponse('importSettingsResponse', {
+      requestId,
+      success: false,
+      handled: true,
+      error: (err && err.message) || String(err)
+    });
+  }
 }
 
-// Check periodiek of er export/import requests zijn via storage
 let lastExportCheck = 0;
 let lastImportCheck = 0;
 setInterval(() => {
-  // Check export request
   chrome.storage.local.get('exportSettingsRequest', (data) => {
-    if (!data.exportSettingsRequest) { return; }
+    if (!data.exportSettingsRequest) return;
     const request = data.exportSettingsRequest;
-    // Alleen als request nieuw is (binnen laatste 2 seconden) en we op Bricks zijn
-    if (window.location.hostname !== 'brickshuisarts.nl' || 
-        Date.now() - request.timestamp > 2000 || 
-        request.timestamp <= lastExportCheck) {
+    if (window.location.hostname !== 'brickshuisarts.nl'
+        || Date.now() - request.timestamp > 2000
+        || request.timestamp <= lastExportCheck) {
       return;
     }
     lastExportCheck = request.timestamp;
-    console.log('📤 Export instellingen verzoek ontvangen via storage:', request.settings);
-    
-    // Verwijder het request
     chrome.storage.local.remove('exportSettingsRequest');
-    
-    // Open Taken pagina en zet filter op Afgehandeld
-    openTakenAndSetFilter((success, originalFilter) => {
-      if (!success) {
-        chrome.storage.local.set({
-          exportSettingsResponse: {
-            requestId: request.requestId,
-            success: false,
-            handled: true,
-            error: originalFilter
-          }
-        });
-        return;
-      }
-      
-      // Export de instellingen
-      exportSettingsToBricks(request.settings, request.requestId, originalFilter);
-    });
+    exportSettingsToBricks(request.settings, request.requestId);
   });
-  
-  // Check import request
+
   chrome.storage.local.get('importSettingsRequest', (data) => {
-    if (!data.importSettingsRequest) { return false; }
+    if (!data.importSettingsRequest) return;
     const request = data.importSettingsRequest;
-    // Alleen als request nieuw is (binnen laatste 2 seconden) en we op Bricks zijn
-    if (window.location.hostname !== 'brickshuisarts.nl' || Date.now() - request.timestamp > 2000 || request.timestamp < lastImportCheck) {
-        return false;
+    if (window.location.hostname !== 'brickshuisarts.nl'
+        || Date.now() - request.timestamp > 2000
+        || request.timestamp < lastImportCheck) {
+      return;
     }
     lastImportCheck = request.timestamp;
-    console.log('📥 Import instellingen verzoek ontvangen via storage');
-    
-    // Verwijder het request
     chrome.storage.local.remove('importSettingsRequest');
-    
-    // Open Taken pagina en zet filter op Afgehandeld
-    openTakenAndSetFilter((success, originalFilter) => {
-      if (!success) {
-        chrome.storage.local.set({
-          importSettingsResponse: {
-            requestId: request.requestId,
-            success: false,
-            handled: true,
-            error: originalFilter
-          }
-        });
-        return;
-      }
-      
-      // Lees de huidige waarde voor later terugzetten
-      const toonDivs = Array.from(document.querySelectorAll('.widget-topbar .font-semibold'));
-      const toonDiv = toonDivs.find(div => div.textContent.trim() === 'Toon');
-      const formDropdown = toonDiv ? toonDiv.nextElementSibling : null;
-      const input = formDropdown ? formDropdown.querySelector('input.form-input.dropdown') : null;
-      const type_taak = input ? input.value : '';
-      
-      // Flag om te voorkomen dat callback meerdere keren wordt uitgevoerd
-      let callbackExecuted = false;
-      
-      // Functie om response te sturen (alleen eenmaal)
-      const sendResponse = (settingsContent) => {
-        if (callbackExecuted) return;
-        callbackExecuted = true;
-        chrome.storage.local.set({ 
-          importSettingsResponse: { 
-            requestId: request.requestId, 
-            success: true, 
-            handled: true, 
-            settings: settingsContent 
-          } 
-        });
-      };
-      
-      // Functie om terug te zetten (alleen eenmaal)
-      const resetTypeTaak = (settingsContent) => {
-        if (type_taak !== 'Afgehandeld' && formDropdown) {
-          const dropdownBtn = formDropdown.querySelector('.dropdownBtn');
-          if (dropdownBtn) {
-            // Klik opnieuw op dropdown
-            dropdownBtn.click();
-            
-            // Wacht en klik op originele waarde
-            setTimeout(() => {
-              const dropdownItems2 = document.querySelector('.dropdown-items');
-              if (!dropdownItems2) {
-                sendResponse(settingsContent);
-                return;
-              }
-              
-              const originalItem = Array.from(dropdownItems2.querySelectorAll('li')).find(li => {
-                const span = li.querySelector('span');
-                return span && span.textContent.trim() === type_taak;
-              });
-              
-              if (originalItem) {
-                console.log('📥 Type taak teruggezet op:', type_taak);
-                originalItem.click();
-              }
-              
-              sendResponse(settingsContent);
-            }, 300);
-          } else {
-            sendResponse(settingsContent);
-          }
-        } else {
-          sendResponse(settingsContent);
-        }
-      };
-      
-      // Wacht even en lees instellingen
-      setTimeout(() => {
-        console.log('📥 Type taak tijdelijk op "Afgehandeld" gezet');
-        readSettingsFromBricks((settingsContent) => {
-          resetTypeTaak(settingsContent);
-        });
-      }, 500);
-    });
+    importSettingsFromBricks(request.requestId);
   });
-}, 200); // Check elke 200ms
-
-// Placeholder functie voor het uitlezen van instellingen uit Bricks
-function readSettingsFromBricks(callback) {
-  console.log('📥 Instellingen uitlezen uit Bricks');
-  
-  let checkCount = 0;
-  const maxChecks = 10; // 10 * 250ms = 2.5 seconden
-  const checkInterval = 250; // Check elke 250ms
-  let intervalId = null;
-  let callbackExecuted = false; // Voorkom dubbele callback
-  
-  const tryReadSettings = () => {
-    checkCount++;
-    
-    // Als callback al is uitgevoerd, stop
-    if (callbackExecuted) {
-      if (intervalId) clearInterval(intervalId);
-      return;
-    }
-    
-    // Zoek naar de taak "Bricks Infused Instellingen"
-    const taakItems = document.querySelectorAll('.taak-list .taak-item');
-    let settingsContent = null;
-    
-    for (const taakItem of taakItems) {
-      // Zoek de titel div
-      const titleDiv = taakItem.querySelector('.nowrap.font-semibold');
-      if (titleDiv && titleDiv.textContent.trim() === 'Bricks Infused Instellingen') {
-        // Vind de inhoud div (direct na de titleDiv in dezelfde parent)
-        const contentDiv = titleDiv.parentElement.querySelector('.flex');
-        if (contentDiv) {
-          settingsContent = contentDiv.textContent.trim();
-          if (settingsContent) {
-            console.log('📥 Instellingen gevonden:', settingsContent);
-            callbackExecuted = true;
-            if (intervalId) clearInterval(intervalId);
-            if (callback) callback(settingsContent);
-            return;
-          }
-        }
-      }
-    }
-    
-    // Als niet gevonden en timeout bereikt
-    if (checkCount >= maxChecks && !callbackExecuted) {
-      callbackExecuted = true;
-      if (intervalId) clearInterval(intervalId);
-      console.log('📥 Instellingen niet gevonden na', (maxChecks * checkInterval), 'ms');
-      if (callback) callback(null);
-    }
-  };
-  
-  // Start direct een check
-  tryReadSettings();
-  
-  // Continueer met checks elke 250ms
-  intervalId = setInterval(tryReadSettings, checkInterval);
-}
-
-// Functie om filter terug te zetten naar originele waarde
-function resetFilter(originalFilter, callback) {
-  if (originalFilter === 'Afgehandeld') {
-    if (callback) callback();
-    return;
-  }
-  
-  const toonDivs = Array.from(document.querySelectorAll('.widget-topbar .font-semibold'));
-  const toonDiv = toonDivs.find(div => div.textContent.trim() === 'Toon');
-  if (!toonDiv) {
-    if (callback) callback();
-    return;
-  }
-  
-  const formDropdown = toonDiv.nextElementSibling;
-  if (!formDropdown || !formDropdown.classList.contains('form-dropdown')) {
-    if (callback) callback();
-    return;
-  }
-  
-  const dropdownBtn = formDropdown.querySelector('.dropdownBtn');
-  if (!dropdownBtn) {
-    if (callback) callback();
-    return;
-  }
-  
-  console.log('📤 Filter terugzetten op:', originalFilter);
-  dropdownBtn.click();
-  
-  // Wacht tot dropdown open is
-  let dropdownCheckCount = 0;
-  const maxDropdownChecks = 20;
-  const dropdownCheckInterval = setInterval(() => {
-    dropdownCheckCount++;
-    
-    if (dropdownCheckCount >= maxDropdownChecks) {
-      clearInterval(dropdownCheckInterval);
-      if (callback) callback();
-      return;
-    }
-    
-    const dropdownItems = document.querySelector('.dropdown-items');
-    if (!dropdownItems || !dropdownItems.querySelector('ul')) {
-      return; // Nog niet open
-    }
-    
-    clearInterval(dropdownCheckInterval);
-    
-    // Vind originele item
-    const originalItem = Array.from(dropdownItems.querySelectorAll('li')).find(li => {
-      const span = li.querySelector('span');
-      return span && span.textContent.trim() === originalFilter;
-    });
-    
-    if (originalItem) {
-      originalItem.click();
-    }
-    
-    if (callback) callback();
-  }, 100);
-}
-
-// Functie om instellingen naar Bricks te exporteren
-function exportSettingsToBricks(settings, requestId, originalFilter) {
-  console.log('📤 Export instellingen naar Bricks');
-  
-  // Zet instellingen om naar JSON
-  const settingsJson = JSON.stringify(settings, null, 2);
-  
-  // Functie om response te sturen
-  const sendResponse = (success, error) => {
-    chrome.storage.local.set({
-      exportSettingsResponse: {
-        requestId: requestId,
-        success: success,
-        handled: true,
-        error: error
-      }
-    });
-  };
-  
-  // Functie om filter terug te zetten en response te sturen
-  const finishExport = (success, error) => {
-    resetFilter(originalFilter, () => {
-      sendResponse(success, error);
-    });
-  };
-  
-  // Zoek naar "Bricks Infused Instellingen" taak
-  let checkCount = 0;
-  const maxChecks = 10;
-  const checkInterval = setInterval(() => {
-    checkCount++;
-    
-    const taakItems = document.querySelectorAll('.taak-list .taak-item');
-    let foundTask = null;
-    
-    for (const taakItem of taakItems) {
-      const titleDiv = taakItem.querySelector('.nowrap.font-semibold');
-      if (titleDiv && titleDiv.textContent.trim() === 'Bricks Infused Instellingen') {
-        foundTask = taakItem;
-        break;
-      }
-    }
-    
-    if (foundTask) {
-      clearInterval(checkInterval);
-      console.log('📤 Bestaande taak gevonden, klik erop');
-      
-      // Klik op de taak
-      foundTask.click();
-      
-      // Wacht tot dialoog open is
-      let dialogCheckCount = 0;
-      const maxDialogChecks = 20;
-      const dialogCheckInterval = setInterval(() => {
-        dialogCheckCount++;
-        
-        if (dialogCheckCount >= maxDialogChecks) {
-          clearInterval(dialogCheckInterval);
-          finishExport(false, 'Dialoog niet geopend');
-          return;
-        }
-        
-        const textarea = document.querySelector('.taak-dialoog-content .form-textbox textarea');
-        if (!textarea) {
-          return; // Nog niet open
-        }
-        
-        clearInterval(dialogCheckInterval);
-        
-        // Vul omschrijving in
-        console.log('📤 Vul omschrijving in');
-        textarea.value = settingsJson;
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        textarea.dispatchEvent(new Event('change', { bubbles: true }));
-        
-        // Wacht even en klik opslaan
-        setTimeout(() => {
-          const saveButton = document.querySelector('.modal-dialog .footer-buttons .right button.btn-secondary');
-          if (!saveButton) {
-            finishExport(false, 'Opslaan knop niet gevonden');
-            return;
-          }
-          
-          console.log('📤 Klik op opslaan');
-          saveButton.click();
-          
-          // Wacht even en zet filter terug
-          setTimeout(() => {
-            finishExport(true);
-          }, 500);
-        }, 300);
-      }, 100);
-      
-      return;
-    }
-    
-    // Als niet gevonden en timeout bereikt, maak nieuwe taak
-    if (checkCount >= maxChecks) {
-      clearInterval(checkInterval);
-      console.log('📤 Taak niet gevonden, maak nieuwe taak');
-      
-      // Klik op nieuwe taak button
-      const newTaskButton = document.querySelector('.takenview .area-taakbuttons .buttonbar .right button');
-      if (!newTaskButton) {
-        finishExport(false, 'Nieuwe taak knop niet gevonden');
-        return;
-      }
-      
-      newTaskButton.click();
-      
-      // Wacht tot dialoog open is
-      let dialogCheckCount = 0;
-      const maxDialogChecks = 20;
-      const dialogCheckInterval = setInterval(() => {
-        dialogCheckCount++;
-        
-        if (dialogCheckCount >= maxDialogChecks) {
-          clearInterval(dialogCheckInterval);
-          finishExport(false, 'Dialoog niet geopend');
-          return;
-        }
-        
-        // Check of dialoog open is door te zoeken naar Status dropdown
-        const statusLabels = Array.from(document.querySelectorAll('.taak-dialoog-content .title'));
-        const statusLabel = statusLabels.find(label => label.textContent.trim() === 'Status');
-        if (!statusLabel) {
-          return; // Nog niet open
-        }
-        
-        const statusContainer = statusLabel.parentElement;
-        const statusDropdown = statusContainer ? statusContainer.querySelector('.form-dropdown input.form-input.dropdown') : null;
-        if (!statusDropdown) {
-          return; // Nog niet open
-        }
-        
-        clearInterval(dialogCheckInterval);
-        
-        // Eerst: Vul titel in
-        console.log('📤 Vul titel in');
-        const titleLabels = Array.from(document.querySelectorAll('.taak-dialoog-content .title'));
-        const titleLabel = titleLabels.find(label => label.textContent.trim() === 'Titel');
-        let titleInput = null;
-        if (titleLabel) {
-          const titleContainer = titleLabel.parentElement;
-          titleInput = titleContainer ? titleContainer.querySelector('input.form-input') : null;
-        }
-        // Fallback: zoek naar input in grid
-        if (!titleInput) {
-          titleInput = document.querySelector('.taak-dialoog-content .grid input.form-input');
-        }
-        if (titleInput) {
-          titleInput.value = 'Bricks Infused Instellingen';
-          titleInput.dispatchEvent(new Event('input', { bubbles: true }));
-          titleInput.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        
-        // Dan: Vul omschrijving in
-        console.log('📤 Vul omschrijving in');
-        const textarea = document.querySelector('.taak-dialoog-content .form-textbox textarea');
-        if (textarea) {
-          textarea.value = settingsJson;
-          textarea.dispatchEvent(new Event('input', { bubbles: true }));
-          textarea.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        
-        // Dan: Klik "Mezelf" button
-        setTimeout(() => {
-          console.log('📤 Klik op "Mezelf"');
-          // Zoek naar "Toekennen aan" sectie en klik op "Mezelf" button
-          const toekennenLabels = Array.from(document.querySelectorAll('.taak-dialoog-content .title'));
-          const toekennenLabel = toekennenLabels.find(label => label.textContent.includes('Toekennen aan'));
-          let mezelfButton = null;
-          if (toekennenLabel) {
-            const toekennenContainer = toekennenLabel.parentElement;
-            const buttons = toekennenContainer ? toekennenContainer.querySelectorAll('button.btn-secondary') : [];
-            mezelfButton = Array.from(buttons).find(btn => btn.textContent.trim() === 'Mezelf');
-          }
-          // Fallback: zoek naar alle buttons met "Mezelf" tekst
-          if (!mezelfButton) {
-            const allButtons = Array.from(document.querySelectorAll('.taak-dialoog-content button.btn-secondary'));
-            mezelfButton = allButtons.find(btn => btn.textContent.trim() === 'Mezelf');
-          }
-          
-          if (mezelfButton) {
-            mezelfButton.click();
-          }
-          
-          // Dan: Zet status op "Afgehandeld"
-          setTimeout(() => {
-            console.log('📤 Zet status op "Afgehandeld"');
-            const statusDropdownBtn = statusDropdown.parentElement.querySelector('.dropdownBtn');
-            if (!statusDropdownBtn) {
-              finishExport(false, 'Status dropdown knop niet gevonden');
-              return;
-            }
-            
-            statusDropdownBtn.click();
-            
-            // Wacht tot dropdown open is met polling
-            let statusDropdownCheckCount = 0;
-            const maxStatusDropdownChecks = 20;
-            const statusDropdownCheckInterval = setInterval(() => {
-              statusDropdownCheckCount++;
-              
-              if (statusDropdownCheckCount >= maxStatusDropdownChecks) {
-                clearInterval(statusDropdownCheckInterval);
-                finishExport(false, 'Status dropdown niet geopend');
-                return;
-              }
-              
-              // Zoek naar de juiste dropdown - de status dropdown heeft "Open" als eerste item en 3 items totaal
-              const allDropdowns = document.querySelectorAll('.dropdown-items');
-              let dropdownItems = null;
-              
-              for (const dropdown of allDropdowns) {
-                const items = dropdown.querySelectorAll('li');
-                if (items.length === 3) {
-                  // Check of eerste item "Open" is
-                  const firstItem = items[0];
-                  const firstSpan = firstItem ? firstItem.querySelector('span') : null;
-                  if (firstSpan && firstSpan.textContent.trim() === 'Open') {
-                    dropdownItems = dropdown;
-                    break;
-                  }
-                }
-              }
-              
-              if (!dropdownItems || !dropdownItems.querySelector('ul')) {
-                return; // Status dropdown nog niet open, blijf wachten
-              }
-              
-              clearInterval(statusDropdownCheckInterval);
-              
-              // Wacht even tot items volledig gerenderd zijn
-              setTimeout(() => {
-                // Vind "Afgehandeld" item - zoek in de dropdown items
-                const allItems = dropdownItems.querySelectorAll('li');
-                console.log('📤 Aantal dropdown items gevonden in status dropdown:', allItems.length);
-                
-                let afgehandeldItem = null;
-                for (const li of allItems) {
-                  const span = li.querySelector('span');
-                  if (span) {
-                    const text = span.textContent.trim();
-                    console.log('📤 Status dropdown item tekst:', text);
-                    if (text === 'Afgehandeld') {
-                      afgehandeldItem = li;
-                      break;
-                    }
-                  }
-                }
-                
-                if (!afgehandeldItem) {
-                  console.log('❌ Afgehandeld item niet gevonden');
-                  finishExport(false, 'Afgehandeld item niet gevonden in status dropdown');
-                  return;
-                }
-                
-                console.log('📤 Klik op "Afgehandeld" in status dropdown');
-                
-                // Creëer een MouseEvent en klik op het li element
-                const clickEvent = new MouseEvent('click', {
-                  bubbles: true,
-                  cancelable: true,
-                  view: window
-                });
-                
-                // Probeer meerdere manieren om te klikken
-                afgehandeldItem.dispatchEvent(clickEvent);
-                afgehandeldItem.click();
-                
-                // Functie om status te checken en op opslaan te klikken
-                const startStatusCheckAndSave = () => {
-                  // Wacht even voordat we beginnen met checken (geef dropdown tijd om te sluiten)
-                  setTimeout(() => {
-                    // Wacht tot dropdown gesloten is en status op "Afgehandeld" is gezet
-                    let statusCheckCount = 0;
-                    const maxStatusChecks = 30;
-                    const statusCheckInterval = setInterval(() => {
-                      statusCheckCount++;
-                      
-                      if (statusCheckCount >= maxStatusChecks) {
-                        clearInterval(statusCheckInterval);
-                        console.log('❌ Status check timeout');
-                        finishExport(false, 'Status niet op Afgehandeld gezet');
-                        return;
-                      }
-                      
-                      // Check of status dropdown nog open is - ALLEEN binnen de modal
-                      const modal = document.querySelector('.modal-dialog');
-                      if (!modal) {
-                        console.log('❌ Modal niet gevonden');
-                        clearInterval(statusCheckInterval);
-                        finishExport(false, 'Modal niet gevonden');
-                        return;
-                      }
-                      
-                      // Zoek alleen dropdowns binnen de modal
-                      const modalDropdowns = modal.querySelectorAll('.dropdown-items');
-                      let statusDropdownOpen = false;
-                      for (const dropdown of modalDropdowns) {
-                        const items = dropdown.querySelectorAll('li');
-                        if (items.length === 3) {
-                          const firstItem = items[0];
-                          const firstSpan = firstItem ? firstItem.querySelector('span') : null;
-                          if (firstSpan && firstSpan.textContent.trim() === 'Open') {
-                            statusDropdownOpen = true;
-                            break;
-                          }
-                        }
-                      }
-                      
-                      if (statusDropdownOpen) {
-                        console.log('📤 Status dropdown nog open, wacht...');
-                        return;
-                      }
-                      
-                      // Dropdown is gesloten, check of status op "Afgehandeld" is gezet
-                      const statusLabels = Array.from(modal.querySelectorAll('.taak-dialoog-content .title'));
-                      const statusLabel = statusLabels.find(label => label.textContent.trim() === 'Status');
-                      const statusContainer = statusLabel ? statusLabel.parentElement : null;
-                      const statusInput = statusContainer ? statusContainer.querySelector('.form-dropdown input.form-input.dropdown') : null;
-                      
-                      console.log('📤 Check status waarde:', statusInput ? statusInput.value : 'statusInput niet gevonden');
-                      
-                      if (statusInput && statusInput.value === 'Afgehandeld') {
-                        clearInterval(statusCheckInterval);
-                        console.log('📤 Status is correct op "Afgehandeld", ga naar opslaan');
-                        
-                        setTimeout(() => {
-                          console.log('📤 Zoek naar opslaan knop...');
-                          
-                          // Probeer verschillende selectors
-                          let saveButton = modal.querySelector('.footer-buttons .right button.btn-secondary');
-                          if (!saveButton) {
-                            console.log('📤 Probeer selector zonder .right');
-                            saveButton = modal.querySelector('.footer-buttons button.btn-secondary');
-                          }
-                          if (!saveButton) {
-                            console.log('📤 Probeer alle buttons in footer');
-                            const footerButtons = modal.querySelectorAll('.footer-buttons button');
-                            console.log('📤 Aantal buttons gevonden:', footerButtons.length);
-                            for (let i = 0; i < footerButtons.length; i++) {
-                              const btn = footerButtons[i];
-                              console.log('📤 Button', i, ':', btn.className, btn.textContent.trim());
-                              if (btn.textContent.trim().toLowerCase().includes('opslaan') || btn.textContent.trim().toLowerCase().includes('save')) {
-                                saveButton = btn;
-                                break;
-                              }
-                            }
-                          }
-                          if (!saveButton) {
-                            // Probeer de laatste button in footer
-                            const footerButtons = modal.querySelectorAll('.footer-buttons button');
-                            if (footerButtons.length > 0) {
-                              saveButton = footerButtons[footerButtons.length - 1];
-                              console.log('📤 Gebruik laatste button in footer');
-                            }
-                          }
-                          
-                          if (!saveButton) {
-                            console.log('❌ Opslaan knop niet gevonden');
-                            finishExport(false, 'Opslaan knop niet gevonden');
-                            return;
-                          }
-                          
-                          console.log('📤 Opslaan knop gevonden:', saveButton.className, saveButton.textContent.trim());
-                          saveButton.click();
-                          setTimeout(() => finishExport(true), 500);
-                        }, 100);
-                      } else {
-                        console.log('📤 Status nog niet correct, blijf wachten... (check', statusCheckCount, 'van', maxStatusChecks, ')');
-                      }
-                    }, 150);
-                  }, 300); // Wacht 300ms voordat we beginnen met checken
-                };
-                
-                // Als dat niet werkt, probeer dan op de span of div te klikken
-                setTimeout(() => {
-                  // Check of de status dropdown nog open is (betekent dat klik niet werkte)
-                  const allDropdownsCheck = document.querySelectorAll('.dropdown-items');
-                  let stillOpen = false;
-                  for (const dropdown of allDropdownsCheck) {
-                    const items = dropdown.querySelectorAll('li');
-                    if (items.length === 3) {
-                      const firstItem = items[0];
-                      const firstSpan = firstItem ? firstItem.querySelector('span') : null;
-                      if (firstSpan && firstSpan.textContent.trim() === 'Open') {
-                        stillOpen = true;
-                        break;
-                      }
-                    }
-                  }
-                  
-                  if (stillOpen) {
-                    console.log('📤 Dropdown nog open, probeer alternatieve klik');
-                    // Probeer op de div met class "split-text" te klikken
-                    const splitTextDiv = afgehandeldItem.querySelector('.split-text');
-                    if (splitTextDiv) {
-                      const altClickEvent = new MouseEvent('click', {
-                        bubbles: true,
-                        cancelable: true,
-                        view: window
-                      });
-                      splitTextDiv.click();
-                      splitTextDiv.dispatchEvent(altClickEvent);
-                    }
-                    // Probeer ook op de span
-                    const span = afgehandeldItem.querySelector('span');
-                    if (span) {
-                      const spanClickEvent = new MouseEvent('click', {
-                        bubbles: true,
-                        cancelable: true,
-                        view: window
-                      });
-                      span.click();
-                      span.dispatchEvent(spanClickEvent);
-                    }
-                    
-                    // Wacht iets langer na alternatieve klik
-                    setTimeout(startStatusCheckAndSave, 200);
-                  } else {
-                    // Dropdown was al gesloten, start direct status check
-                    startStatusCheckAndSave();
-                  }
-                }, 100);
-              }, 100);
-            }, 100);
-          }, 300);
-        }, 300);
-      }, 100);
-    }
-  }, 250);
-}
+}, 400);
 
 // Functie om klantnummer te detecteren en op te slaan
 function detectAndSaveKlantnummer() {
@@ -1540,7 +911,7 @@ function exportBerichtAsPdf(berichtContainer, options) {
                     // Verzamel alle label-waarde paren
                     const col1s = col.querySelectorAll('.col1');
                     col1s.forEach((col1) => {
-                        let label = col1.textContent?.trim() || '';
+                        const label = maybeRedact(col1.textContent?.trim() || '');
                         const nextSibling = col1.nextElementSibling;
                         if (nextSibling && !nextSibling.classList.contains('col1')) {
                             let value = '';
@@ -1551,11 +922,7 @@ function exportBerichtAsPdf(berichtContainer, options) {
                             } else {
                                 value = nextSibling.textContent?.trim() || '';
                             }
-                            if (opts.redactBsn) {
-                                const redacted = redactBsnField(label, value);
-                                label = redacted.label;
-                                value = redacted.value;
-                            }
+                            value = maybeRedact(value);
                             if (label && value) {
                                 data.push({ label, value });
                             }
@@ -2517,6 +1884,5 @@ detectAndSaveKlantnummer();
 
 
 
-//to do: sla alle instellingen in een taak op (exporteren/importeren), zodat ze door alle browsers gedeeld worden binnen hetzelfde account
 
 

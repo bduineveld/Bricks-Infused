@@ -436,12 +436,20 @@
         return toggleLayoutResize();
       case 'startZorgdomeinVerwijzing':
         return startZorgdomeinVerwijzing(args);
+      case 'whoAmI':
+        if (!state.B || !state.B.hisRegie || typeof state.B.hisRegie.wieBenIk !== 'function') {
+          throw new Error('bricks-api-not-ready');
+        }
+        return state.B.hisRegie.wieBenIk().then((r) => (r && r.ReturnValue) || r);
       case 'takenNew':
         if (!state.B || !state.B.taken) throw new Error('bricks-api-not-ready');
         return state.B.taken.newTaak();
       case 'takenStore':
         if (!state.B || !state.B.taken) throw new Error('bricks-api-not-ready');
         return state.B.taken.storeTaak(args.taak, args.seperateTaskForEachMedewerker, args.askForCollectieUpdate);
+      case 'takenGet':
+        if (!state.B || !state.B.taken) throw new Error('bricks-api-not-ready');
+        return state.B.taken.getTaak(args.taakId);
       case 'takenGetByMedewerkerAndRol':
         if (!state.B || !state.B.taken) throw new Error('bricks-api-not-ready');
         return state.B.taken.getTakenByMedewerkerIdAndRol(

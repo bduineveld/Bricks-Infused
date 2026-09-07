@@ -479,7 +479,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Poll voor response
       let pollCount = 0;
-      const maxPolls = 150; // 15 seconden (150 * 100ms) - export kan lang duren vanwege pagina navigatie
+      const maxPolls = 80; // 8s — export gaat via Taken-API, geen pagina-navigatie
       const pollInterval = setInterval(() => {
         pollCount++;
         chrome.storage.local.get(['exportSettingsResponse', 'exportSettingsRequest'], (data) => {
@@ -537,7 +537,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Poll voor response
     let pollCount = 0;
-    const maxPolls = 150; // 15 seconden (150 * 100ms) - import kan lang duren vanwege pagina navigatie en dropdown interacties
+    const maxPolls = 80; // 8s — import gaat via Taken-API
     const pollInterval = setInterval(() => {
       pollCount++;
       chrome.storage.local.get(['importSettingsResponse', 'importSettingsRequest'], (data) => {

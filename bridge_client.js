@@ -72,6 +72,17 @@
     toggleLayoutResize: () => call('toggleLayoutResize', {}, 5000),
     startZorgdomeinVerwijzing: (opts) =>
       call('startZorgdomeinVerwijzing', opts || {}, 60000),
+    whoAmI: () => call('whoAmI'),
+    takenNew: () => call('takenNew'),
+    takenStore: (taak, seperateTaskForEachMedewerker, askForCollectieUpdate) =>
+      call('takenStore', {
+        taak,
+        seperateTaskForEachMedewerker,
+        askForCollectieUpdate
+      }),
+    takenGet: (taakId) => call('takenGet', { taakId }),
+    takenGetByMedewerkerAndRol: (opts) =>
+      call('takenGetByMedewerkerAndRol', opts || {}),
     ping: () => call('ping')
   };
 })();
