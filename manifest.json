@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Bricks Infused",
   "description": "Voegt nieuwe functionaliteiten toe aan Bricks Huisarts.",
-  "version": "2.1.7",
-  "version_name": "v2.1.7 07-09-2026",
+  "version": "2.2.1",
+  "version_name": "v2.2.1 10-09-2026",
   "author": "Dokter Bart",
   "homepage_url": "https://dokterbart.nl/",
   "icons": {
@@ -36,8 +36,22 @@
       "matches": [
         "https://brickshuisarts.nl/*/*"
       ],
-      "js": ["lib/jspdf.umd.min.js", "bridge_client.js", "content.js", "content_uprevent.js"],
+      "js": [
+        "lib/jspdf.umd.min.js",
+        "bridge_client.js",
+        "content.js",
+        "content_uprevent.js",
+        "content_juvoly_bricks.js"
+      ],
       "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "https://tandem.juvoly.nl/*",
+        "https://app.juvoly.nl/*"
+      ],
+      "js": ["content_juvoly.js"],
+      "run_at": "document_idle"
     },
     {
       "matches": [
@@ -61,15 +75,22 @@
     }
   ],
   "permissions": [
-    "storage"
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://tandem.juvoly.nl/*",
+    "https://app.juvoly.nl/*"
   ],
   "web_accessible_resources": [
     {
       "resources": ["bricks-infused.svg", "bricks.svg"],
       "matches": [
         "https://brickshuisarts.nl/*",
-        "https://www.zorgdomein.nl/*"
+        "https://www.zorgdomein.nl/*",
+        "https://tandem.juvoly.nl/*",
+        "https://app.juvoly.nl/*"
       ]
     }
   ]
-} 
+}

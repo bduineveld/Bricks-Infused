@@ -1,5 +1,4 @@
 
-
 const defaultOptions = {
   communicatieKnoppen: true,
   journaalResizer: true,
@@ -36,15 +35,50 @@ const UPREVENT_EXT_IDS_PROD = [
 ];
 // === DEV-ONLY: maak deze array leeg (`[]`) vóór upload naar de Edge store ===
 const UPREVENT_EXT_IDS_DEV = [
-  
+  "hdneeeaikfhphigcmjcfppkclpoglhfb" // U-Prevent Infused — dev (key in manifest)
 ];
 // ============================================================================
 const UPREVENT_EXT_IDS = [...UPREVENT_EXT_IDS_PROD, ...UPREVENT_EXT_IDS_DEV];
 const UPREVENT_INSTALL_URL =
   "https://microsoftedge.microsoft.com/addons/detail/uprevent-infused/pmlakmbpemkfccbhkdmcofagpipfchio";
 
+// Juvoly draait in een aparte tab (geen iframe — Permissions-Policy blokkeert mic in Bricks).
+const JUVOLY_HOME_URL = "https://tandem.juvoly.nl/";
+const JUVOLY_SOURCE = "bricks-infused-juvoly";
+
 let pendingResizerPercentages = {};
 let resizerSaveTimer = null;
+
+function isJuvolyUrl(url) {
+  if (!url || typeof url !== "string") return false;
+  try {
+    const u = new URL(url);
+    return /(^|\.)juvoly\.nl$/i.test(u.hostname);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function findJuvolyTab() {
+  const tabs = await chrome.tabs.query({});
+  const juvolyTabs = tabs.filter((t) => isJuvolyUrl(t.url));
+  if (!juvolyTabs.length) return null;
+  juvolyTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+  const active = juvolyTabs.find((t) => t.active);
+  return active || juvolyTabs[0];
+}
+
+function sendToJuvolyTab(tabId, type, extra = {}) {
+  return new Promise((resolve) => {
+    chrome.tabs.sendMessage(tabId, { source: JUVOLY_SOURCE, type, ...extra }, (resp) => {
+      if (chrome.runtime.lastError) {
+        resolve({ ok: false, error: chrome.runtime.lastError.message });
+        return;
+      }
+      resolve(resp || { ok: false, error: "no-response" });
+    });
+  });
+}
 
 function flushResizerPercentages() {
   if (!Object.keys(pendingResizerPercentages).length) return;
@@ -118,10 +152,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
-  
-  // Export/Import instellingen functionaliteit
+
   if (message && message.type === 'exportSettings') {
-    // Zet een signaal in storage dat content scripts kunnen oppikken
     chrome.storage.local.set({
       exportSettingsRequest: {
         timestamp: Date.now(),
@@ -129,7 +161,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         requestId: Math.random().toString(36).substr(2, 9)
       }
     }, () => {
-      // Wacht kort en check of er een response is
       setTimeout(() => {
         chrome.storage.local.get('exportSettingsResponse', (data) => {
           const response = data.exportSettingsResponse;
@@ -142,18 +173,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
       }, 500);
     });
-    return true; // Asynchronous response
+    return true;
   }
-  
+
   if (message && message.type === 'importSettings') {
-    // Zet een signaal in storage dat content scripts kunnen oppikken
     chrome.storage.local.set({
       importSettingsRequest: {
         timestamp: Date.now(),
         requestId: Math.random().toString(36).substr(2, 9)
       }
     }, () => {
-      // Wacht kort en check of er een response is
       setTimeout(() => {
         chrome.storage.local.get('importSettingsResponse', (data) => {
           const response = data.importSettingsResponse;
@@ -166,22 +195,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
       }, 500);
     });
-    return true; // Asynchronous response
+    return true;
   }
-  
-  // Handlers voor responses van content scripts
+
   if (message && message.type === 'exportSettingsResponse') {
     chrome.storage.local.set({ exportSettingsResponse: message });
     return true;
   }
-  
+
   if (message && message.type === 'importSettingsResponse') {
     chrome.storage.local.set({ importSettingsResponse: message });
     return true;
   }
-  
+
   ///////////////////////////////// U-PREVENT INTEGRATIE //////////////////////////////////////////////////////////////
-  // Ping U-Prevent Infused to check if it is installed and reachable.
   if (message && message.type === 'uprevent.ping') {
     if (!UPREVENT_EXT_IDS.length) {
       sendResponse({ installed: false, reason: 'no-extension-id-configured', installUrl: UPREVENT_INSTALL_URL });
@@ -205,7 +232,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Relay an open + prefill request to U-Prevent Infused.
   if (message && message.type === 'uprevent.openAndFill') {
     if (!UPREVENT_EXT_IDS.length) {
       sendResponse({ ok: false, error: 'no-extension-id-configured' });
@@ -227,6 +253,149 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, error: String(err && err.message || err) });
     }
     return true;
+  }
+
+  ///////////////////////////////// JUVOLY TAB BRIDGE //////////////////////////////////////////////////////////////
+  if (message && message.source === JUVOLY_SOURCE) {
+    const reply = (payload) => {
+      try { sendResponse(payload); } catch (_) { /* channel closed */ }
+    };
+
+    const waitMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    async function ensureJuvolyTab(opts = {}) {
+      let tab = await findJuvolyTab();
+      let created = false;
+      if (!tab) {
+        const createOpts = { url: JUVOLY_HOME_URL, active: !opts.stayInBackground };
+        if (sender && sender.tab && typeof sender.tab.index === 'number') {
+          createOpts.index = sender.tab.index + 1;
+          if (sender.tab.windowId != null) createOpts.windowId = sender.tab.windowId;
+        }
+        tab = await chrome.tabs.create(createOpts);
+        created = true;
+        // Wacht tot tab klaar is (max ~8s), niet blind 1.2s
+        for (let i = 0; i < 16; i++) {
+          try {
+            const fresh = await chrome.tabs.get(tab.id);
+            if (fresh && fresh.status === 'complete') break;
+          } catch (_) { break; }
+          await waitMs(500);
+        }
+        await waitMs(400);
+      } else if (!opts.stayInBackground) {
+        await chrome.tabs.update(tab.id, { active: true });
+        if (tab.windowId != null) {
+          try { await chrome.windows.update(tab.windowId, { focused: true }); } catch (_) { /* ignore */ }
+        }
+      }
+      return { tab, created };
+    }
+
+    async function callJuvoly(tabId, type, retries = 2) {
+      let resp = await sendToJuvolyTab(tabId, type);
+      for (let i = 0; i < retries; i++) {
+        if (resp && resp.ok) return resp;
+        if (resp && resp.error && !/Receiving end does not exist|no-response/i.test(resp.error)) {
+          return resp;
+        }
+        await waitMs(700);
+        resp = await sendToJuvolyTab(tabId, type);
+      }
+      return resp || { ok: false, error: 'no-response' };
+    }
+
+    if (message.type === 'juvoly.openOrFocus') {
+      (async () => {
+        try {
+          const { tab, created } = await ensureJuvolyTab({
+            stayInBackground: !!message.stayInBackground
+          });
+          // Max ~6s op content-script status
+          for (let i = 0; i < 12; i++) {
+            const st = await callJuvoly(tab.id, 'juvoly.status', 0);
+            if (st && st.ok && st.phase && st.phase !== 'unknown' && st.phase !== 'loading') {
+              if (st.phase === 'login') {
+                await chrome.tabs.update(tab.id, { active: true });
+                reply({
+                  ok: false,
+                  needsLogin: true,
+                  created,
+                  tabId: tab.id,
+                  status: st,
+                  error: 'Log eerst in op Juvoly.'
+                });
+                return;
+              }
+              if (message.ensureReady) {
+                const ready = await callJuvoly(tab.id, 'juvoly.ensureReady');
+                reply({
+                  ok: !!ready.ok,
+                  created,
+                  tabId: tab.id,
+                  status: ready.status || st,
+                  error: ready.error,
+                  needsLogin: ready.status && ready.status.phase === 'login'
+                });
+                return;
+              }
+              reply({ ok: true, created, tabId: tab.id, status: st });
+              return;
+            }
+            await waitMs(500);
+          }
+          const last = await callJuvoly(tab.id, 'juvoly.status');
+          reply({
+            ok: true,
+            created,
+            tabId: tab.id,
+            status: last.ok ? last : { phase: 'loading', noTab: false },
+            warning: 'Juvoly-tab is geopend, maar nog niet klaar. Log in of wacht tot de startpagina geladen is.'
+          });
+        } catch (err) {
+          reply({ ok: false, error: String(err && err.message || err) });
+        }
+      })();
+      return true;
+    }
+
+    const actionTypes = [
+      'juvoly.status',
+      'juvoly.ensureReady',
+      'juvoly.start',
+      'juvoly.pause',
+      'juvoly.resume',
+      'juvoly.summarize',
+      'juvoly.getSoep',
+      'juvoly.stop'
+    ];
+
+    if (actionTypes.includes(message.type)) {
+      (async () => {
+        try {
+          let tab = await findJuvolyTab();
+          if (!tab) {
+            if (message.type === 'juvoly.status') {
+              reply({ ok: false, noTab: true, error: 'Geen Juvoly-tab' });
+              return;
+            }
+            if (message.type === 'juvoly.start' || message.type === 'juvoly.ensureReady') {
+              const opened = await ensureJuvolyTab({ stayInBackground: true });
+              tab = opened.tab;
+              await waitMs(800);
+            } else {
+              reply({ ok: false, error: 'Geen Juvoly-tab gevonden. Klik eerst op Juvoly.' });
+              return;
+            }
+          }
+          const resp = await callJuvoly(tab.id, message.type);
+          reply(resp);
+        } catch (err) {
+          reply({ ok: false, error: String(err && err.message || err) });
+        }
+      })();
+      return true;
+    }
   }
 
 });
