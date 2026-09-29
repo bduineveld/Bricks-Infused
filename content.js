@@ -1556,6 +1556,28 @@ medicijn_scheduleMarkeringen(500);
 
 ///////////////////////////////// ZORGDOMEIN CUSTOM //////////////////////////////////////////////////////////////
 
+// Snelkoppelingen wonen in de losse extensie Zorgdomein Infused (sinds v2.3);
+// de background vraagt ze daar op. Korte cache: het contextmenu opent vaak.
+let zorgdomein_linksCache = null;
+let zorgdomein_linksCacheTs = 0;
+
+function zorgdomein_getLinks(callback) {
+    if (zorgdomein_linksCache && Date.now() - zorgdomein_linksCacheTs < 10000) {
+        callback(zorgdomein_linksCache);
+        return;
+    }
+    chrome.runtime.sendMessage({ type: 'zorgdomein.getLinks' }, (resp) => {
+        if (chrome.runtime.lastError || !resp || !resp.ok) {
+            console.log('Zorgdomein Infused niet bereikbaar:', chrome.runtime.lastError || resp);
+            callback([]);
+            return;
+        }
+        zorgdomein_linksCache = resp.links || [];
+        zorgdomein_linksCacheTs = Date.now();
+        callback(zorgdomein_linksCache);
+    });
+}
+
 function zorgdomein_addLabformOption() {
     const contextMenuVars = document.querySelector('.contextmenuvars');
     if (!contextMenuVars) return;
@@ -1563,13 +1585,16 @@ function zorgdomein_addLabformOption() {
     const zorgdomeinItem = contextMenuVars.querySelector('.context-menu-item[title="ZorgDomein"]');
     if (!zorgdomeinItem) return;
     
-    // Check if custom options already exist to prevent infinite loop
+    // Check if custom options already exist (or are being fetched) to prevent infinite loop
     const existingCustomOptions = contextMenuVars.querySelectorAll('.context-menu-item[data-custom-zorgdomein="true"]');
     if (existingCustomOptions.length > 0) return; // Already added, skip
+    if (zorgdomeinItem.dataset.infusedLoading === '1') return;
+    zorgdomeinItem.dataset.infusedLoading = '1';
     
-    // Get zorgdomeinLinks from options
-    loadGlobalOptions((options) => {
-        const zorgdomeinLinks = options.zorgdomeinLinks || [];
+    zorgdomein_getLinks((zorgdomeinLinks) => {
+        delete zorgdomeinItem.dataset.infusedLoading;
+        if (!zorgdomeinItem.isConnected) return;
+        if (contextMenuVars.querySelector('.context-menu-item[data-custom-zorgdomein="true"]')) return;
         
         // Reverse the array so items appear in correct order when inserted
         zorgdomeinLinks.slice().reverse().forEach((link, index) => {
@@ -1614,8 +1639,8 @@ function zorgdomein_addLabformOption() {
                 e.stopPropagation(); // Prevent triggering the parent li click
                 console.log(`${link.name} settings clicked`);
                 
-                // Open plugin settings page
-                chrome.runtime.sendMessage({ type: 'openOptionsPage', focusTarget: 'zorgdomein' });
+                // Snelkoppelingen worden beheerd in Zorgdomein Infused
+                chrome.runtime.sendMessage({ type: 'zorgdomein.openOptions' });
             });
             
             optionCaption.appendChild(optionText);
@@ -1628,16 +1653,12 @@ function zorgdomein_addLabformOption() {
             
             // Add click handler — always bind to ACTIVE patient (multi-dossier safe)
             optionItem.addEventListener('click', async () => {
-                const timestamp = Date.now();
-                let linkPath = link.link;
-                if (linkPath && linkPath.startsWith('https://www.zorgdomein.nl/')) {
-                    linkPath = linkPath.replace('https://www.zorgdomein.nl', '');
-                }
-                chrome.storage.sync.set({
-                    lastClickedLink: linkPath,
-                    lastClickedTimestamp: timestamp
-                }, () => {
-                    console.log('Last clicked link saved:', link.link, 'at', timestamp);
+                // Zorgdomein Infused opent dit formulier zodra ZorgDomein na de SSO-start op het dashboard landt
+                await new Promise((resolve) => {
+                    chrome.runtime.sendMessage({ type: 'zorgdomein.setPendingLink', link: link.link }, (resp) => {
+                        console.log('Pending link doorgegeven aan Zorgdomein Infused:', link.link, resp || chrome.runtime.lastError);
+                        resolve();
+                    });
                 });
 
                 // Direct API for the active consult — never querySelectorAll the first

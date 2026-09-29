@@ -8,9 +8,7 @@ const defaultOptions = {
   medicijnMarkeringen: true,
   pdfExport: true,
   zorgdomeinSnelkoppelingen: true,
-  zorgdomeinDashboardLinks: true,
-  btnLabels: [],
-  zorgdomeinLinks: []
+  btnLabels: []
 };
 
 // =============================================================================
@@ -41,6 +39,29 @@ const UPREVENT_EXT_IDS_DEV = [
 const UPREVENT_EXT_IDS = [...UPREVENT_EXT_IDS_PROD, ...UPREVENT_EXT_IDS_DEV];
 const UPREVENT_INSTALL_URL =
   "https://microsoftedge.microsoft.com/addons/detail/uprevent-infused/pmlakmbpemkfccbhkdmcofagpipfchio";
+
+// =============================================================================
+// Zorgdomein Infused bridge wiring (zie manifest.ids.md in Zorgdomein Infused).
+// -----------------------------------------------------------------------------
+// Snelkoppelingen + dashboard-doorsturen wonen sinds v2.3 in de losse extensie
+// Zorgdomein Infused. Bricks vraagt de lijst op en meldt welke link na de
+// SSO-start geopend moet worden. Zorgdomein Infused whitelist Bricks in
+// manifest.json → externally_connectable.ids.
+//
+//   Zorgdomein Infused:
+//     dickknaonoknjbjcfmoafmkimkldeaef  — dev (key in manifest) → ZORGDOMEIN_EXT_IDS_DEV
+//     (nog niet in store)               — store → ZORGDOMEIN_EXT_IDS_PROD
+//
+// Vóór Edge store-upload Bricks: ZORGDOMEIN_EXT_IDS_DEV = []
+// =============================================================================
+const ZORGDOMEIN_EXT_IDS_PROD = [];
+// === DEV-ONLY: maak deze array leeg (`[]`) vóór upload naar de Edge store ===
+const ZORGDOMEIN_EXT_IDS_DEV = [
+  "dickknaonoknjbjcfmoafmkimkldeaef" // Zorgdomein Infused — dev (key in manifest)
+];
+// ============================================================================
+const ZORGDOMEIN_EXT_IDS = [...ZORGDOMEIN_EXT_IDS_PROD, ...ZORGDOMEIN_EXT_IDS_DEV];
+const ZORGDOMEIN_INSTALL_URL = null; // store-URL invullen zodra gepubliceerd
 
 // Juvoly draait in een aparte tab (geen iframe — Permissions-Policy blokkeert mic in Bricks).
 const JUVOLY_HOME_URL = "https://tandem.juvoly.nl/";
@@ -109,6 +130,39 @@ function sendMessageToFirstAvailableExtension(extensionIds, payload, callback) {
     });
   };
   tryNext();
+}
+
+/**
+ * Eenmalig: oude zorgdomeinLinks uit Bricks-opslag naar Zorgdomein Infused kopiëren
+ * (alleen als die nog leeg is). Oude data blijft staan als backup.
+ */
+function migrateZorgdomeinLinks(extId) {
+  chrome.storage.sync.get(['zorgdomeinLinks', 'zorgdomeinLinksMigrated'], (data) => {
+    if (data.zorgdomeinLinksMigrated) return;
+    const legacy = Array.isArray(data.zorgdomeinLinks) ? data.zorgdomeinLinks : [];
+    if (!legacy.length) {
+      chrome.storage.sync.set({ zorgdomeinLinksMigrated: true });
+      return;
+    }
+    chrome.runtime.sendMessage(extId, { type: 'zorgdomein.importLinks', links: legacy, onlyIfEmpty: true }, (resp) => {
+      if (chrome.runtime.lastError || !resp || !resp.ok) return;
+      chrome.storage.sync.set({ zorgdomeinLinksMigrated: true });
+    });
+  });
+}
+
+function sendToZorgdomeinInfused(payload, sendResponse) {
+  if (!ZORGDOMEIN_EXT_IDS.length) {
+    sendResponse({ ok: false, error: 'no-extension-id-configured' });
+    return;
+  }
+  sendMessageToFirstAvailableExtension(ZORGDOMEIN_EXT_IDS, payload, (result) => {
+    if (!result.ok || !result.resp) {
+      sendResponse({ ok: false, error: result.error || 'no-response', installUrl: ZORGDOMEIN_INSTALL_URL });
+      return;
+    }
+    sendResponse({ ...result.resp, extensionId: result.extId });
+  });
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -252,6 +306,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } catch (err) {
       sendResponse({ ok: false, error: String(err && err.message || err) });
     }
+    return true;
+  }
+
+  ///////////////////////////////// ZORGDOMEIN INFUSED INTEGRATIE //////////////////////////////////////////////////////
+  if (message && message.type === 'zorgdomein.ping') {
+    sendToZorgdomeinInfused({ type: 'zorgdomein.ping' }, (resp) => {
+      if (!resp.ok) {
+        sendResponse({ installed: false, installUrl: ZORGDOMEIN_INSTALL_URL });
+        return;
+      }
+      migrateZorgdomeinLinks(resp.extensionId);
+      sendResponse({ installed: true, version: resp.version || null, extensionId: resp.extensionId });
+    });
+    return true;
+  }
+
+  if (message && message.type === 'zorgdomein.getLinks') {
+    sendToZorgdomeinInfused({ type: 'zorgdomein.getLinks' }, (resp) => {
+      if (resp.ok && resp.extensionId) migrateZorgdomeinLinks(resp.extensionId);
+      sendResponse(resp);
+    });
+    return true;
+  }
+
+  if (message && message.type === 'zorgdomein.setPendingLink') {
+    sendToZorgdomeinInfused({ type: 'zorgdomein.setPendingLink', link: message.link }, sendResponse);
+    return true;
+  }
+
+  if (message && message.type === 'zorgdomein.openOptions') {
+    sendToZorgdomeinInfused({ type: 'zorgdomein.openOptions', focusTarget: 'zorgdomein' }, sendResponse);
     return true;
   }
 

@@ -75,6 +75,32 @@ function updateUpreventInstallStatus() {
   });
 }
 
+function updateZorgdomeinInstallStatus() {
+  const installedEl = document.getElementById('zorgdomein-installed-msg');
+  const manageBtn = document.getElementById('zorgdomein-manage');
+  const missingBlock = document.getElementById('zorgdomein-missing-block');
+  const installLink = document.getElementById('zorgdomein-install-link');
+  if (!installedEl || !missingBlock) return;
+
+  chrome.runtime.sendMessage({ type: 'zorgdomein.ping' }, (resp) => {
+    if (chrome.runtime.lastError || !resp || !resp.installed) {
+      installedEl.style.display = 'none';
+      manageBtn.style.display = 'none';
+      missingBlock.style.display = 'block';
+      if (installLink && resp?.installUrl) {
+        installLink.href = resp.installUrl;
+        installLink.style.display = 'inline';
+      }
+      return;
+    }
+    const versionSuffix = resp.version ? ` (v${resp.version})` : '';
+    installedEl.textContent = `Zorgdomein Infused is geïnstalleerd${versionSuffix}.`;
+    installedEl.style.display = 'block';
+    manageBtn.style.display = 'inline-block';
+    missingBlock.style.display = 'none';
+  });
+}
+
 // Drag & drop helpers
 let dragPlaceholder = null;
 function getDragPlaceholder(containerId) {
@@ -177,6 +203,7 @@ function setupListDragContainer(listId, rowClass) {
 document.addEventListener('DOMContentLoaded', () => {
   console.log("Options page loaded");
   updateUpreventInstallStatus();
+  updateZorgdomeinInstallStatus();
   
   function expandSectionByTarget(targetId) {
     const section = document.getElementById(targetId);
@@ -392,18 +419,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('opt-medicijn').checked = data.medicijnMarkeringen !== false;
     document.getElementById('opt-pdf-export').checked = data.pdfExport !== false;
     document.getElementById('opt-zorgdomein').checked = data.zorgdomeinSnelkoppelingen !== false;
-    document.getElementById('opt-zorgdomein-dashboard').checked = data.zorgdomeinDashboardLinks !== false;
     // Alleen renderen als er data bestaat
     if (data.btnLabels && data.btnLabels.length > 0) {
       console.log("btnLabels to render:", data.btnLabels);
       renderBtnLabels(data.btnLabels);
     }
-    if (data.zorgdomeinLinks && data.zorgdomeinLinks.length > 0) {
-      console.log("zorgdomeinLinks to render:", data.zorgdomeinLinks);
-      renderZorgdomeinLinks(data.zorgdomeinLinks);
-    }
     setupListDragContainer('btnlabels-list', 'btnlabel-row');
-    setupListDragContainer('zorgdomein-links-list', 'zorgdomein-link-row');
   });
 
   document.getElementById('optionsForm').addEventListener('submit', (e) => {
@@ -417,10 +438,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const medicijnMarkeringen = document.getElementById('opt-medicijn').checked;
     const pdfExport = document.getElementById('opt-pdf-export').checked;
     const zorgdomeinSnelkoppelingen = document.getElementById('opt-zorgdomein').checked;
-    const zorgdomeinDashboardLinks = document.getElementById('opt-zorgdomein-dashboard').checked;
     const btnLabels = collectBtnLabels();
-    const zorgdomeinLinks = collectZorgdomeinLinks();
-    setStorage({ klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, zorgdomeinSnelkoppelingen, zorgdomeinDashboardLinks, btnLabels, zorgdomeinLinks }, () => {
+    setStorage({ klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, zorgdomeinSnelkoppelingen, btnLabels }, () => {
       document.getElementById('status').textContent = 'Opgeslagen!';
       setTimeout(() => document.getElementById('status').textContent = '', 1500);
     });
@@ -429,8 +448,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('addBtnLabel').addEventListener('click', () => {
     addBtnLabelRow({ label: '', value: '' });
   });
-  document.getElementById('addZorgdomeinLink').addEventListener('click', () => {
-    addZorgdomeinLinkRow({ name: '', link: '' });
+  document.getElementById('zorgdomein-manage').addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type: 'zorgdomein.openOptions' });
   });
   document.getElementById('closeOptions').addEventListener('click', () => {
     window.close();
@@ -658,100 +677,4 @@ function collectBtnLabels() {
     const inputs = row.querySelectorAll('input');
     return { label: inputs[0].value.trim(), value: inputs[1].value.trim() };
   }).filter(btn => btn.label && btn.value);
-}
-
-function renderZorgdomeinLinks(zorgdomeinLinks) {
-  const list = document.getElementById('zorgdomein-links-list');
-  list.innerHTML = '';
-  (zorgdomeinLinks || []).forEach((link, idx) => {
-    addZorgdomeinLinkRow(link, idx);
-  });
-}
-
-function addZorgdomeinLinkRow(link, idx) {
-  const list = document.getElementById('zorgdomein-links-list');
-  const row = document.createElement('div');
-  row.className = 'zorgdomein-link-row';
-  row.draggable = true;
-  row.innerHTML = `
-    <span class="drag-handle" title="Sleep om te verplaatsen" style="cursor: move; user-select: none; margin-right: 6px;">↕</span>
-    <input type="text" placeholder="Naam" value="${link.name || ''}">
-    <input type="text" placeholder="Pad (bijv. /supply-matcher/supply)" value="${link.link || ''}">
-    <input type="checkbox" class="episodelijst-checkbox" style="display: none;" ${link.episodelijstNodig ? 'checked' : ''}>
-    <span class="episodelijst-toggle" title="episodelijst wordt niet gevraagd, klik om te veranderen">⚕️</span>
-    <span class="btn-remove" title="Verwijderen" style="margin-left:6px; cursor: pointer;">❌</span>
-  `;
-  row.querySelector('.btn-remove').onclick = () => {
-    row.remove();
-  };
-
-  // Episodelijst toggle functionality
-  const episodelijstToggle = row.querySelector('.episodelijst-toggle');
-  const episodelijstCheckbox = row.querySelector('.episodelijst-checkbox');
-  
-  // Initialize display
-  updateEpisodelijstDisplay(episodelijstToggle, episodelijstCheckbox);
-  
-  // Add click handler
-  episodelijstToggle.addEventListener('click', () => {
-    episodelijstCheckbox.checked = !episodelijstCheckbox.checked;
-    updateEpisodelijstDisplay(episodelijstToggle, episodelijstCheckbox);
-  });
-
-  // Drag & drop reordering - gebruik dezelfde logica als btnlabel-row
-  row.addEventListener('dragstart', (e) => {
-    console.log('Drag start on zorgdomein-link-row');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', 'drag');
-    row.classList.add('dragging');
-    row.style.opacity = '0.5';
-  });
-  row.addEventListener('dragend', () => {
-    console.log('Drag end on zorgdomein-link-row');
-    row.classList.remove('dragging');
-    row.style.opacity = '';
-    const ph = getDragPlaceholder('zorgdomein-links-list');
-    if (ph && ph.parentNode) ph.parentNode.removeChild(ph);
-  });
-  row.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (row.classList.contains('dragging')) return;
-    const rect = row.getBoundingClientRect();
-    const before = (e.clientY - rect.top) < rect.height / 2;
-    const ph = getDragPlaceholder('zorgdomein-links-list');
-    if (before) {
-      if (ph !== row.previousSibling) {
-        list.insertBefore(ph, row);
-      }
-    } else {
-      if (ph !== row.nextSibling) {
-        list.insertBefore(ph, row.nextSibling);
-      }
-    }
-  });
-  list.appendChild(row);
-}
-
-function collectZorgdomeinLinks() {
-  const rows = document.querySelectorAll('.zorgdomein-link-row');
-  return Array.from(rows).map(row => {
-    const inputs = row.querySelectorAll('input');
-    const episodelijstCheckbox = row.querySelector('.episodelijst-checkbox');
-    return { 
-      name: inputs[0].value.trim(), 
-      link: inputs[1].value.trim(),
-      episodelijstNodig: episodelijstCheckbox ? episodelijstCheckbox.checked : false
-    };
-  }).filter(link => link.name); // Only require name, link can be empty
-}
-
-function updateEpisodelijstDisplay(toggle, checkbox) {
-  if (checkbox.checked) {
-    toggle.classList.add('active');
-    toggle.title = 'episodelijst wordt gevraagd, klik om te veranderen';
-  } else {
-    toggle.classList.remove('active');
-    toggle.title = 'episodelijst wordt niet gevraagd, klik om te veranderen';
-  }
 }

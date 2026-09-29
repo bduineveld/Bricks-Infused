@@ -87,6 +87,24 @@ location.pathname.match(/\/s\/consult\/(\d+)/)?.[1]
 
 ---
 
+## Zorgdomein Infused (losse extensie, sinds Bricks Infused v2.3)
+
+Alles wat óp zorgdomein.nl draait (Snelkoppeling-knop, Productkeuze-link, dashboard-links,
+doorsturen na SSO) en het beheer van de snelkoppelingen zit in `../Zorgdomein infused/`.
+Bricks houdt alleen het verwijsmenu + de SSO-start (`bricksBridge.startZorgdomeinVerwijzing`).
+
+Flow bij klik op een snelkoppeling in het Bricks-contextmenu:
+
+1. `content.js` → background `zorgdomein.getLinks` → Zorgdomein Infused (`externally_connectable`).
+2. Klik → `zorgdomein.setPendingLink(link)` → daarna bridge start verwijzing (POST `zdlogin`).
+3. ZorgDomein landt op `/dashboard` → Zorgdomein Infused navigeert naar de link (≤ 60 s).
+
+ID's: `background.js` → `ZORGDOMEIN_EXT_IDS_DEV/PROD`; Bricks-ID's staan in de whitelist van
+Zorgdomein Infused (`manifest.json` → `externally_connectable.ids`, zie `manifest.ids.md` daar).
+Oude `zorgdomeinLinks` in Bricks-opslag worden eenmalig overgezet (`zorgdomeinLinksMigrated`).
+
+---
+
 ## Taken API
 
 ```js

@@ -444,28 +444,36 @@
               <button type="button" id="addBtnLabel" class="btn btn-secondary btn-small">Nieuwe knop toevoegen</button>
             </div>
       
-            <div class="checkbox-item has-expandable" id="zorgdomein-settings-item" style="display: block; padding-right: 50px;">
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <input type="checkbox" id="opt-zorgdomein">
-                <label for="opt-zorgdomein">Zorgdomein snelkoppelingen</label>
-                <button type="button" class="expand-toggle collapsed" data-target="zorgdomein-section"></button>
-              </div>
-              <div class="compact-checkbox-row" style="display: flex; align-items: center; gap: 12px; margin-top: 10px; margin-left: 30px;">
-                <input type="checkbox" id="opt-zorgdomein-dashboard">
-                <label for="opt-zorgdomein-dashboard">Toon ook in het ZorgDomein dashboard</label>
-              </div>
+            <div class="checkbox-item has-expandable" id="zorgdomein-settings-item">
+              <input type="checkbox" id="opt-zorgdomein">
+              <label for="opt-zorgdomein">Zorgdomein snelkoppelingen <span style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(in het ZorgDomein-verwijsmenu)</span></label>
+              <button type="button" class="expand-toggle collapsed" data-target="zorgdomein-section"></button>
             </div>
-      
-            <div class="expandable-section collapsed" id="zorgdomein-section">
-              <h3 style="margin: 16px 0 12px 0; font-size: 1.1em; color: #4a5568;">Zorgdomein snelkoppelingen aanpassen
-              </h3>
-              <div id="zorgdomein-links-list"></div>
-              <button type="button" id="addZorgdomeinLink" class="btn btn-secondary btn-small">Nieuwe snelkoppeling
-                toevoegen</button>
-            </div>
-      
 
-      
+            <div class="expandable-section collapsed" id="zorgdomein-section">
+              <div style="background: #f7fafc; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #667eea;">
+                <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 14px; line-height: 1.5;">
+                  De snelkoppelingen worden beheerd in de losse plugin <em>Zorgdomein Infused</em> (ook bruikbaar zonder
+                  Bricks). Bricks toont ze onder <strong>ZorgDomein</strong> in het verwijsmenu, start de verwijzing voor de
+                  actieve patiënt en Zorgdomein Infused opent daarna het gekozen formulier.
+                </p>
+                <p id="zorgdomein-installed-msg" style="display: none; margin: 12px 0 0 0; color: #2f855a; font-size: 13px; line-height: 1.5; font-weight: 500;"></p>
+                <button type="button" id="zorgdomein-manage" class="btn btn-secondary btn-small" style="display: none; margin-top: 12px;">Snelkoppelingen beheren</button>
+                <div id="zorgdomein-missing-block" style="display: none;">
+                  <p style="margin: 12px 0 0 0; color: #4a5568; font-size: 13px; line-height: 1.5;">
+                    <em>Zorgdomein Infused</em> is niet gevonden. Installeer die plugin om snelkoppelingen te gebruiken;
+                    bestaande snelkoppelingen uit Bricks Infused worden dan automatisch overgezet.
+                  </p>
+                  <p style="margin: 12px 0 0 0; font-size: 13px;">
+                    <a id="zorgdomein-install-link" href="#" target="_blank" rel="noopener"
+                      style="display: none; color: #667eea; text-decoration: none; font-weight: 500;">
+                      → Zorgdomein Infused installeren
+                    </a>
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div class="checkbox-item">
               <input type="checkbox" id="opt-pdf-export">
               <label for="opt-pdf-export">Exporteer brief als PDF <span
