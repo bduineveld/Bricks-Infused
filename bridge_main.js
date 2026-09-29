@@ -323,6 +323,26 @@
     return state.B.doApi(service, method, params || {}, !!ignoreBusy);
   }
 
+  /**
+   * Zelfde keuze als de native ZorgDomein-tab (VecozoEpisoden): eerste nummer uit
+   * Patient.GetGegevens, met PersoonTelefoonnummer vóór de rest. Leeg bij fout.
+   */
+  async function getDefaultTelefoonNummer(patientId) {
+    try {
+      const res = state.B && state.B.patient && typeof state.B.patient.getGegevens === 'function'
+        ? await state.B.patient.getGegevens(patientId)
+        : await doApi('Patient', 'GetGegevens', { patientId }, true);
+      const nummers = ((res && res.ReturnValue) || {}).TelefoonNummers || [];
+      const sorted = nummers.slice().sort((a, b) =>
+        (a.TelefoonnummerType === 'PersoonTelefoonnummer' ? 0 : 1) -
+        (b.TelefoonnummerType === 'PersoonTelefoonnummer' ? 0 : 1));
+      return (sorted[0] && sorted[0].Nummer) || '';
+    } catch (e) {
+      log('getDefaultTelefoonNummer failed', e);
+      return '';
+    }
+  }
+
   async function startZorgdomeinVerwijzing(options) {
     const opts = options || {};
     const ctx = getActiveContext();
@@ -366,7 +386,9 @@
       metingDagen: opts.metingDagen != null ? opts.metingDagen : 90,
       episodesIds: opts.episodesIds || opts.episodenIds || [],
       ContraindicatieIds: opts.ContraindicatieIds || opts.indicatieIds || [],
-      telefoonNummer: opts.telefoonNummer != null ? opts.telefoonNummer : (opts.telnr || ''),
+      telefoonNummer: opts.telefoonNummer != null
+        ? opts.telefoonNummer
+        : (opts.telnr || await getDefaultTelefoonNummer(patientId)),
       dcrEpisodesIds: opts.dcrEpisodesIds || []
     };
 

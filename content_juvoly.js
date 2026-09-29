@@ -66,22 +66,47 @@ function juvoly_hasStartConsult() {
   );
 }
 
+function juvoly_isVisible(el) {
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  return r.width >= 1 || r.height >= 1;
+}
+
+function juvoly_pauseButton() {
+  return juvoly_btnByAria(/^Pauze$/i, { visibleOnly: true });
+}
+
+/**
+ * Hervat-knop na pauze. Juvoly's knoptekst varieert ("Juvoly hervatten", "Hervatten", …),
+ * dus niet-verankerd matchen; laatste redmiddel is de klikbare knop rond de opname-orb
+ * (svg met gradient op --recording-blur-color-*).
+ */
+function juvoly_resumeButton() {
+  const byLabel = juvoly_allButtons().find((b) => {
+    if (!juvoly_isVisible(b)) return false;
+    const t = [b.innerText, b.getAttribute('aria-label'), b.getAttribute('title')]
+      .map(juvoly_clean).join(' ');
+    return /hervat|resume|doorgaan/i.test(t) && !/pauze/i.test(t);
+  });
+  if (byLabel) return byLabel;
+  if (juvoly_pauseButton()) return null;
+  const stop = document.querySelector('stop[stop-color*="--recording-blur-color"]');
+  const orbButton = stop && stop.closest('button, [role="button"]');
+  return juvoly_isVisible(orbButton) ? orbButton : null;
+}
+
 function juvoly_isRecording() {
-  return !!juvoly_btnByAria(/^Pauze$/i, { visibleOnly: true })
-    || (/\/encounter\/?$/i.test(location.pathname) && /Luisteren/i.test(document.body?.innerText || ''));
+  if (juvoly_pauseButton()) return true;
+  return /\/encounter\/?$/i.test(location.pathname)
+    && /Luisteren/i.test(document.body?.innerText || '')
+    && !juvoly_resumeButton();
 }
 
 function juvoly_isPaused() {
-  // Na pauze: vaak "Hervatten" / play-achtige knop, of geen "Luisteren"
-  const resume = juvoly_btnByAria(/^(Hervatten|Resume|Start)$/i, { visibleOnly: true })
-    || juvoly_btnByText(/^(Hervatten|Doorgaan)$/i);
-  if (resume) return true;
-  if (/\/encounter\/?$/i.test(location.pathname)
-    && !juvoly_btnByAria(/^Pauze$/i, { visibleOnly: true })
-    && /gepauzeerd|pauze/i.test(document.body?.innerText || '')) {
-    return true;
-  }
-  return false;
+  if (juvoly_pauseButton()) return false;
+  if (juvoly_resumeButton()) return true;
+  return /\/encounter\/?$/i.test(location.pathname)
+    && /gepauzeerd|pauze/i.test(document.body?.innerText || '');
 }
 
 function juvoly_isNotesPage() {
@@ -159,8 +184,7 @@ function juvoly_status() {
     notes: phase === 'notes',
     canStart: juvoly_hasStartConsult(),
     canPause: !!juvoly_btnByAria(/^Pauze$/i, { visibleOnly: true }),
-    canResume: !!(juvoly_btnByAria(/^(Hervatten|Resume|Start)$/i, { visibleOnly: true })
-      || juvoly_btnByText(/^(Hervatten|Doorgaan)$/i)),
+    canResume: !!juvoly_resumeButton(),
     canSummarize: !!(juvoly_btnByText(/^Samenvatting maken$/i)
       || [...document.querySelectorAll('button')].some((b) =>
         /Beëindigen en verslag maken/i.test(juvoly_clean(b.innerText)))),
@@ -215,28 +239,32 @@ async function juvoly_startRecording() {
     return { ok: true, action: 'already-recording', status: st };
   }
   if (st.phase === 'paused') {
-    const resume = juvoly_btnByAria(/^(Hervatten|Resume|Start)$/i, { visibleOnly: true })
-      || juvoly_btnByText(/^(Hervatten|Doorgaan)$/i);
-    if (juvoly_click(resume)) {
-      await juvoly_waitFor(() => juvoly_phase() === 'recording', 8000);
-      return { ok: true, action: 'resumed', status: juvoly_status() };
-    }
+    // Gepauzeerd consult nooit vervangen door een nieuw consult
+    return juvoly_resume();
   }
-  if (st.phase === 'notes') {
-    // Nieuw consult vanaf verslag
-    const nieuw = juvoly_btnByText(/^Nieuw consult$/i) || juvoly_btnByText(/^Nieuw starten$/i);
-    if (juvoly_click(nieuw)) {
-      await juvoly_sleep(500);
-    }
-  }
-
-  const start = juvoly_btnByText(/^(Consult starten|Een nieuw consult starten)$/i)
-    || juvoly_btnByText(/^Nieuw consult$/i)
+  const findStart = () => juvoly_btnByText(/^(Consult starten|Een nieuw consult starten)$/i)
     || juvoly_btnByText(/^Nieuw starten$/i);
+  // Na samenvatten (verslagpagina) staat er alleen "Nieuw consult" (split-knop linksboven);
+  // niet afhankelijk van phase === 'notes', want de verslag-URL/layout kan wijzigen.
+  let start = findStart();
+  if (!start) {
+    const nieuw = juvoly_btnByText(/^Nieuw consult$/i);
+    if (juvoly_click(nieuw)) {
+      await juvoly_waitFor(() => {
+        const p = juvoly_phase();
+        return p === 'recording' || p === 'paused' || !!findStart();
+      }, 12000);
+      st = juvoly_status();
+      if (st.phase === 'recording' || st.phase === 'paused') {
+        return { ok: true, action: 'started', status: st };
+      }
+      start = findStart();
+    }
+  }
   if (!start) {
     return {
       ok: false,
-      error: 'Geen “Consult starten” gevonden. Open de Juvoly-startpagina.',
+      error: 'Geen “Consult starten” of “Nieuw consult” gevonden. Open de Juvoly-startpagina.',
       status: juvoly_status()
     };
   }
@@ -262,12 +290,11 @@ function juvoly_pause() {
   return { ok: true, action: 'pause', status: juvoly_status() };
 }
 
-function juvoly_resume() {
-  const btn = juvoly_btnByAria(/^(Hervatten|Resume|Start)$/i, { visibleOnly: true })
-    || juvoly_btnByText(/^(Hervatten|Doorgaan)$/i);
-  if (!juvoly_click(btn)) {
-    return { ok: false, error: 'Geen hervat-knop gevonden', status: juvoly_status() };
+async function juvoly_resume() {
+  if (!juvoly_click(juvoly_resumeButton())) {
+    return { ok: false, error: 'Geen hervat-knop gevonden in Juvoly. Klik in het Juvoly-tabblad op hervatten.', status: juvoly_status() };
   }
+  await juvoly_waitFor(() => juvoly_phase() === 'recording', 8000);
   return { ok: true, action: 'resume', status: juvoly_status() };
 }
 
@@ -348,7 +375,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse(juvoly_pause());
           break;
         case 'juvoly.resume':
-          sendResponse(juvoly_resume());
+          sendResponse(await juvoly_resume());
           break;
         case 'juvoly.summarize':
           sendResponse(await juvoly_summarize());

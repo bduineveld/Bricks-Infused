@@ -416,10 +416,8 @@ async function juvoly_onRecord() {
     } else if (phase === 'paused') {
       const resp = await juvoly_send('juvoly.resume');
       if (!resp.ok) {
-        const start = await juvoly_send('juvoly.start');
-        if (!start.ok) juvoly_toast(start.error || 'Hervatten mislukt.', 'error');
-        else juvoly_toast('Opname hervat.', 'ok');
-        juvolyLastStatus = start.status || juvolyLastStatus;
+        juvoly_toast(resp.error || 'Hervatten mislukt.', 'error');
+        juvolyLastStatus = resp.status || juvolyLastStatus;
       } else {
         juvoly_toast('Opname hervat.', 'ok');
         juvolyLastStatus = resp.status || juvolyLastStatus;
