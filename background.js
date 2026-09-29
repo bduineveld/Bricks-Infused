@@ -50,18 +50,21 @@ const UPREVENT_INSTALL_URL =
 //
 //   Zorgdomein Infused:
 //     dickknaonoknjbjcfmoafmkimkldeaef  — dev (key in manifest) → ZORGDOMEIN_EXT_IDS_DEV
-//     (nog niet in store)               — store → ZORGDOMEIN_EXT_IDS_PROD
+//     mehfpjeblkfbobhimioegkflielbcemk  — Edge store → ZORGDOMEIN_EXT_IDS_PROD
 //
 // Vóór Edge store-upload Bricks: ZORGDOMEIN_EXT_IDS_DEV = []
 // =============================================================================
-const ZORGDOMEIN_EXT_IDS_PROD = [];
+const ZORGDOMEIN_EXT_IDS_PROD = [
+  "mehfpjeblkfbobhimioegkflielbcemk" // Zorgdomein Infused — Edge store
+];
 // === DEV-ONLY: maak deze array leeg (`[]`) vóór upload naar de Edge store ===
 const ZORGDOMEIN_EXT_IDS_DEV = [
   "dickknaonoknjbjcfmoafmkimkldeaef" // Zorgdomein Infused — dev (key in manifest)
 ];
 // ============================================================================
 const ZORGDOMEIN_EXT_IDS = [...ZORGDOMEIN_EXT_IDS_PROD, ...ZORGDOMEIN_EXT_IDS_DEV];
-const ZORGDOMEIN_INSTALL_URL = null; // store-URL invullen zodra gepubliceerd
+const ZORGDOMEIN_INSTALL_URL =
+  "https://microsoftedge.microsoft.com/addons/detail/zorgdomein-infused/mehfpjeblkfbobhimioegkflielbcemk";
 
 // Juvoly draait in een aparte tab (geen iframe — Permissions-Policy blokkeert mic in Bricks).
 const JUVOLY_HOME_URL = "https://tandem.juvoly.nl/";
