@@ -380,15 +380,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return { tab, created };
     }
 
-    async function callJuvoly(tabId, type, retries = 2) {
-      let resp = await sendToJuvolyTab(tabId, type);
+    async function callJuvoly(tabId, type, retries = 2, extra = {}) {
+      let resp = await sendToJuvolyTab(tabId, type, extra);
       for (let i = 0; i < retries; i++) {
         if (resp && resp.ok) return resp;
         if (resp && resp.error && !/Receiving end does not exist|no-response/i.test(resp.error)) {
           return resp;
         }
         await waitMs(700);
-        resp = await sendToJuvolyTab(tabId, type);
+        resp = await sendToJuvolyTab(tabId, type, extra);
       }
       return resp || { ok: false, error: 'no-response' };
     }
@@ -438,7 +438,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             created,
             tabId: tab.id,
             status: last.ok ? last : { phase: 'loading', noTab: false },
-            warning: 'Juvoly-tab is geopend, maar nog niet klaar. Log in of wacht tot de startpagina geladen is.'
+            // Tab van vóór het (her)laden van de extensie heeft geen content script
+            warning: !last.ok && /Receiving end does not exist/i.test(last.error || '')
+              ? 'Ververs het Juvoly-tabblad (F5), dan kan Bricks Infused het besturen.'
+              : 'Juvoly-tab is geopend, maar nog niet klaar. Log in of wacht tot de startpagina geladen is.'
           });
         } catch (err) {
           reply({ ok: false, error: String(err && err.message || err) });
@@ -455,6 +458,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       'juvoly.resume',
       'juvoly.summarize',
       'juvoly.getSoep',
+      'juvoly.listNotes',
+      'juvoly.selectNote',
+      'juvoly.splitInfo',
+      'juvoly.splitApply',
       'juvoly.stop'
     ];
 
@@ -476,7 +483,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               return;
             }
           }
-          const resp = await callJuvoly(tab.id, message.type);
+          // splitApply niet herhalen: een tweede klik zou in het volgende scherm landen
+          const resp = message.type === 'juvoly.splitApply'
+            ? await callJuvoly(tab.id, message.type, 0, { values: message.values, mode: message.mode, removed: message.removed })
+            : message.type === 'juvoly.selectNote'
+              ? await callJuvoly(tab.id, message.type, 2, { index: message.index })
+              : await callJuvoly(tab.id, message.type);
           reply(resp);
         } catch (err) {
           reply({ ok: false, error: String(err && err.message || err) });

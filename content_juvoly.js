@@ -17,8 +17,9 @@ function juvoly_allButtons() {
 
 function juvoly_btnByText(re, { visibleOnly = true } = {}) {
   return juvoly_allButtons().find((b) => {
-    const t = juvoly_clean(b.innerText) + ' ' + juvoly_clean(b.getAttribute('aria-label'));
-    if (!re.test(t)) return false;
+    // Tekst en aria-label los testen: Juvoly zet er verschillende teksten in
+    // ("Consult starten" / "Een nieuw consult starten"), samengeplakt matcht ^…$ nooit.
+    if (!re.test(juvoly_clean(b.innerText)) && !re.test(juvoly_clean(b.getAttribute('aria-label')))) return false;
     if (visibleOnly && b.offsetParent === null && getComputedStyle(b).display === 'none') return false;
     if (visibleOnly) {
       const r = b.getBoundingClientRect();
@@ -114,8 +115,16 @@ function juvoly_isNotesPage() {
     || !!document.querySelector('textarea.note-entry-row, textarea[aria-label="Invoerinhoud"]');
 }
 
+/** Na herladen van een oud consult: "Geen ontmoeting gevonden" op een /medical-notes/-URL. */
+function juvoly_isSessionGone() {
+  return [...document.querySelectorAll('h1, h2, h3')].some((h) =>
+    juvoly_isVisible(h) && /Geen ontmoeting gevonden/i.test(juvoly_clean(h.textContent)));
+}
+
 function juvoly_phase() {
   if (juvoly_isLoginPage()) return 'login';
+  // Geen verslag om op te wachten; "Nieuw consult" staat er wel, dus behandelen als startpagina
+  if (juvoly_isSessionGone()) return 'ready';
   if (juvoly_isNotesPage()) return 'notes';
   if (juvoly_isRecording()) return 'recording';
   if (juvoly_isPaused()) return 'paused';
@@ -125,7 +134,27 @@ function juvoly_phase() {
   return 'unknown';
 }
 
-function juvoly_readSoepFromDom() {
+const JUVOLY_SOEP_LABELS = { subjectief: 'S', objectief: 'O', evaluatie: 'E', plan: 'P' };
+
+/**
+ * Verslagpagina (2026-10): <li class="group/row"> met <label> (Subjectief, …) en
+ * [class*="group/content"] met een contenteditable tekstblok. Labels bevatten soft hyphens.
+ */
+function juvoly_readSoepFromRows() {
+  const out = { S: '', O: '', E: '', P: '' };
+  const rows = [...document.querySelectorAll('li')].filter((li) =>
+    li.querySelector(':scope > label') && li.querySelector(':scope > [class*="group/content"]'));
+  rows.forEach((li) => {
+    const key = JUVOLY_SOEP_LABELS[juvoly_clean(li.querySelector(':scope > label').textContent).toLowerCase()];
+    if (!key || out[key]) return;
+    const content = li.querySelector(':scope > [class*="group/content"]');
+    const box = content.querySelector('[contenteditable="true"]') || content.querySelector('.w-full.grow') || content;
+    out[key] = String(box.innerText || '').replace(/\u00ad/g, '').trim();
+  });
+  return out;
+}
+
+function juvoly_readSoepFromTextareas() {
   const labels = ['Subjectief', 'Objectief', 'Evaluatie', 'Plan'];
   const keys = ['S', 'O', 'E', 'P'];
   const out = { S: '', O: '', E: '', P: '' };
@@ -152,6 +181,130 @@ function juvoly_readSoepFromDom() {
   return out;
 }
 
+function juvoly_readSoepFromDom() {
+  const rows = juvoly_readSoepFromRows();
+  if (juvoly_hasSoepText(rows)) return rows;
+  return juvoly_readSoepFromTextareas();
+}
+
+/**
+ * Verslag-tabbladen naast "Context" en "Transcript" (één bij een gewoon consult,
+ * meerdere na opsplitsen). De codeer-tabs (Voorgesteld/Vastgezet) zitten elders.
+ */
+function juvoly_noteTabs() {
+  const tabs = [...document.querySelectorAll('[role="tab"]')].filter(juvoly_isVisible);
+  const transcript = tabs.find((t) => juvoly_clean(t.innerText) === 'Transcript');
+  if (!transcript) return [];
+  return tabs.filter((t) => t.parentElement === transcript.parentElement
+    && !/^(Context|Transcript)$/i.test(juvoly_clean(t.innerText)));
+}
+
+function juvoly_listNotes() {
+  const notes = juvoly_noteTabs().map((t) => ({
+    name: juvoly_clean(t.innerText),
+    selected: t.getAttribute('aria-selected') === 'true'
+  }));
+  return { ok: notes.length > 0, notes, error: notes.length ? undefined : 'Geen verslagen gevonden in Juvoly.' };
+}
+
+async function juvoly_selectNote(index) {
+  const tab = juvoly_noteTabs()[index];
+  if (!tab) return { ok: false, error: `Verslag ${index + 1} niet gevonden in Juvoly.`, status: juvoly_status() };
+  if (tab.getAttribute('aria-selected') !== 'true') {
+    juvoly_click(tab);
+    await juvoly_waitFor(() => {
+      const t = juvoly_noteTabs()[index];
+      return t && t.getAttribute('aria-selected') === 'true';
+    }, 5000, 100);
+    await juvoly_sleep(300);
+  }
+  await juvoly_waitFor(() => juvoly_isNotesReady() || juvoly_isSummaryFailed(), 30000, 300);
+  return { ok: juvoly_isNotesReady(), error: juvoly_isNotesReady() ? undefined : 'Verslag is nog niet klaar.', status: juvoly_status() };
+}
+
+/** Juvoly-dialoog "Dit verslag opsplitsen" (meerdere onderwerpen in één consult). */
+function juvoly_splitDialog() {
+  return [...document.querySelectorAll('[role="dialog"]')].find((d) =>
+    juvoly_isVisible(d) && [...d.querySelectorAll('h1, h2, h3')].some((h) => /opsplitsen/i.test(juvoly_clean(h.textContent)))) || null;
+}
+
+function juvoly_splitInputs(dialog) {
+  // Inputs hebben geen type-attribuut; elk staat naast zijn label ("Verslag 1", …)
+  return [...dialog.querySelectorAll('input')].filter((i) =>
+    !i.disabled && (!i.type || i.type === 'text') && i.parentElement && i.parentElement.querySelector('label'));
+}
+
+function juvoly_splitInfo() {
+  const dialog = juvoly_splitDialog();
+  if (!dialog) return { ok: false, error: 'Geen opsplits-vraag open in Juvoly.' };
+  const items = juvoly_splitInputs(dialog).map((input) => ({
+    label: juvoly_clean(input.parentElement.querySelector('label').textContent),
+    value: input.value || ''
+  }));
+  return { ok: true, items };
+}
+
+/** React-gestuurde input: native setter + input-event, anders negeert Juvoly de waarde. */
+function juvoly_setInputValue(input, value) {
+  const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+  desc.set.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/** Prullenbak (aria "Verwijderen") in de rij van een onderwerp; alleen aanwezig bij 3+ onderwerpen. */
+function juvoly_splitDeleteButton(input) {
+  let row = input;
+  while (row.parentElement && row.parentElement.querySelectorAll('input').length === 1) row = row.parentElement;
+  return row.querySelector('button[aria-label="Verwijderen"]');
+}
+
+async function juvoly_splitApply(values, mode, removed) {
+  const dialog = juvoly_splitDialog();
+  if (!dialog) return { ok: false, error: 'Geen opsplits-vraag open in Juvoly.', status: juvoly_status() };
+  if (mode === 'confirm') {
+    // Hoogste index eerst, zodat lagere indexen blijven kloppen
+    const toRemove = [...new Set(removed || [])].filter((i) => Number.isInteger(i)).sort((a, b) => b - a);
+    for (const idx of toRemove) {
+      const before = juvoly_splitInputs(dialog);
+      if (before.length <= 2 || !before[idx]) break;
+      const del = juvoly_splitDeleteButton(before[idx]);
+      if (!juvoly_click(del)) {
+        return { ok: false, error: 'Onderwerp verwijderen in Juvoly mislukt.', status: juvoly_status() };
+      }
+      await juvoly_waitFor(() => juvoly_splitInputs(dialog).length < before.length, 3000, 100);
+    }
+    const inputs = juvoly_splitInputs(dialog);
+    (values || []).forEach((v, i) => {
+      if (inputs[i] && typeof v === 'string' && v.trim() && inputs[i].value !== v) juvoly_setInputValue(inputs[i], v.trim());
+    });
+    await juvoly_sleep(150);
+  }
+  const re = mode === 'confirm' ? /^Bevestigen$/i : /^Genereren zonder splitsen$/i;
+  const btn = [...dialog.querySelectorAll('button')].find((b) => re.test(juvoly_clean(b.innerText)));
+  if (!juvoly_click(btn)) return { ok: false, error: 'Knop in de opsplits-vraag niet gevonden.', status: juvoly_status() };
+  await juvoly_waitFor(() => !juvoly_splitDialog(), 5000);
+  return { ok: true, action: mode, status: juvoly_status() };
+}
+
+/** Te kort/onvoldoende consult: Juvoly toont dan "Verslag kon niet worden gegenereerd" (h2). */
+function juvoly_isSummaryFailed() {
+  if (!juvoly_isNotesPage()) return false;
+  return [...document.querySelectorAll('h1, h2, h3')].some((h) =>
+    juvoly_isVisible(h) && /Verslag kon niet worden gegenereerd/i.test(juvoly_clean(h.textContent)));
+}
+
+/**
+ * Juvoly schrijft het verslag gestreamd; "Kopiëren"/"Aanpassen" zijn dan disabled
+ * en "Verwerken..." staat aria-busy. Pas klaar als dat voorbij is.
+ */
+function juvoly_isNotesReady() {
+  if (!juvoly_isNotesPage()) return false;
+  if (juvoly_allButtons().some((b) => b.getAttribute('aria-busy') === 'true' && juvoly_isVisible(b))) return false;
+  const kopieren = juvoly_btnByText(/^Kopiëren$/i);
+  return !!kopieren && !kopieren.disabled;
+}
+
 function juvoly_hasSoepText(soep) {
   return !!(soep && (soep.S || soep.O || soep.E || soep.P));
 }
@@ -171,7 +324,10 @@ async function juvoly_waitFor(predicate, timeoutMs = 20000, step = 300) {
 
 function juvoly_status() {
   const phase = juvoly_phase();
-  const soep = phase === 'notes' ? juvoly_readSoepFromDom() : null;
+  const splitPending = !!juvoly_splitDialog();
+  const summaryFailed = phase === 'notes' && juvoly_isSummaryFailed();
+  const notesReady = phase === 'notes' && !summaryFailed && juvoly_isNotesReady();
+  const soep = notesReady ? juvoly_readSoepFromDom() : null;
   return {
     ok: true,
     url: location.href,
@@ -182,6 +338,12 @@ function juvoly_status() {
     recording: phase === 'recording',
     paused: phase === 'paused',
     notes: phase === 'notes',
+    notesReady,
+    // Juvoly is aan het verwerken ("Verwerken...") of nog aan het schrijven
+    processing: juvoly_allButtons().some((b) => b.getAttribute('aria-busy') === 'true' && juvoly_isVisible(b))
+      || (phase === 'notes' && !notesReady && !summaryFailed && !splitPending),
+    summaryFailed,
+    splitPending,
     canStart: juvoly_hasStartConsult(),
     canPause: !!juvoly_btnByAria(/^Pauze$/i, { visibleOnly: true }),
     canResume: !!juvoly_resumeButton(),
@@ -298,21 +460,40 @@ async function juvoly_resume() {
   return { ok: true, action: 'resume', status: juvoly_status() };
 }
 
-async function juvoly_waitForSoep(timeoutMs = 45000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (juvoly_isNotesPage()) {
-      const soep = juvoly_readSoepFromDom();
-      if (juvoly_hasSoepText(soep) || Date.now() - start > 6000) return soep;
-    }
-    await juvoly_sleep(400);
+async function juvoly_waitForSoep(timeoutMs = 90000) {
+  await juvoly_waitFor(() => juvoly_isNotesReady() || juvoly_isSummaryFailed() || !!juvoly_splitDialog(), timeoutMs, 400);
+  return juvoly_isNotesReady() ? juvoly_readSoepFromDom() : { S: '', O: '', E: '', P: '' };
+}
+
+/** Uitkomst na wachten op Juvoly: klaar, opsplits-vraag of mislukt. */
+async function juvoly_summaryResult(action) {
+  const soep = await juvoly_waitForSoep();
+  if (juvoly_splitDialog()) {
+    return {
+      ok: false,
+      splitPending: true,
+      soep,
+      status: juvoly_status(),
+      error: 'Juvoly vraagt of het verslag opgesplitst moet worden.'
+    };
   }
-  return juvoly_readSoepFromDom();
+  const ready = juvoly_isNotesReady();
+  const failed = juvoly_isSummaryFailed();
+  return {
+    ok: ready,
+    action,
+    soep,
+    summaryFailed: failed,
+    status: juvoly_status(),
+    error: ready ? undefined : failed
+      ? 'Verslag kon niet worden gegenereerd (consult te kort?). Zie het Juvoly-tabblad.'
+      : 'Samenvatting niet klaar binnen de wachttijd.'
+  };
 }
 
 async function juvoly_summarize() {
   if (juvoly_isNotesPage()) {
-    return { ok: true, action: 'already-notes', soep: juvoly_readSoepFromDom(), status: juvoly_status() };
+    return juvoly_summaryResult('already-notes');
   }
 
   const summarize = juvoly_btnByText(/^Samenvatting maken$/i);
@@ -331,21 +512,15 @@ async function juvoly_summarize() {
     };
   }
 
-  const soep = await juvoly_waitForSoep();
-  return {
-    ok: juvoly_isNotesPage() || juvoly_hasSoepText(soep),
-    action: 'summarized',
-    soep,
-    status: juvoly_status(),
-    error: juvoly_isNotesPage() || juvoly_hasSoepText(soep)
-      ? undefined
-      : 'Samenvatting niet ontvangen binnen de wachttijd.'
-  };
+  return juvoly_summaryResult('summarized');
 }
 
 async function juvoly_getSoep() {
-  if (juvoly_isNotesPage()) {
+  if (juvoly_isNotesReady()) {
     return { ok: true, soep: juvoly_readSoepFromDom(), url: location.href, status: juvoly_status() };
+  }
+  if (juvoly_isNotesPage()) {
+    return { ok: false, error: 'Juvoly is de samenvatting nog aan het schrijven.', soep: { S: '', O: '', E: '', P: '' }, status: juvoly_status() };
   }
   // Niet automatisch samenvatten bij get — Bricks triggert summarize apart
   return {
@@ -379,6 +554,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           break;
         case 'juvoly.summarize':
           sendResponse(await juvoly_summarize());
+          break;
+        case 'juvoly.listNotes':
+          sendResponse(juvoly_listNotes());
+          break;
+        case 'juvoly.selectNote':
+          sendResponse(await juvoly_selectNote(message.index));
+          break;
+        case 'juvoly.splitInfo':
+          sendResponse(juvoly_splitInfo());
+          break;
+        case 'juvoly.splitApply':
+          sendResponse(await juvoly_splitApply(message.values, message.mode, message.removed));
           break;
         case 'juvoly.getSoep':
           sendResponse(await juvoly_getSoep());
