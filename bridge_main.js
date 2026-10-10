@@ -496,6 +496,20 @@
     }
   }
 
+  // Bricks-API-fouten zijn objecten zonder .message ("Geen toegang" e.d. zit elders);
+  // String(obj) gaf "[object Object]".
+  function errorText(payload) {
+    if (!payload) return 'unknown-error';
+    if (typeof payload === 'string') return payload;
+    const direct = payload.message || payload.Message || payload.ErrorMessage || payload.error || payload.Error;
+    if (typeof direct === 'string' && direct) return direct;
+    try {
+      const json = JSON.stringify(payload);
+      if (json && json !== '{}') return json.slice(0, 500);
+    } catch (e) { /* circular */ }
+    return String(payload);
+  }
+
   function reply(id, ok, payload) {
     window.postMessage(
       {
@@ -503,7 +517,7 @@
         id,
         ok,
         result: ok ? payload : undefined,
-        error: ok ? undefined : (payload && payload.message) || String(payload)
+        error: ok ? undefined : errorText(payload)
       },
       location.origin
     );
@@ -517,7 +531,7 @@
     Promise.resolve()
       .then(() => handleRequest(data))
       .then((result) => reply(id, true, result))
-      .catch((err) => reply(id, false, err && err.message ? err : { message: String(err) }));
+      .catch((err) => reply(id, false, err));
   });
 
   installMapHook();
