@@ -9,6 +9,9 @@ const defaultOptions = {
   pdfExport: true,
   postverwerkingLab: true,
   postverwerkingBrief: true,
+  postTypenUit: [],
+  postWeglaten: {},
+  postKopjes: {},
   zorgdomeinSnelkoppelingen: true,
   btnLabels: []
 };

@@ -53,14 +53,41 @@ function pv_regels(tekst) {
     return tekst.split('\n').map((r) => r.trim());
 }
 
+// --- Instellingen (opties → pv_opties, gezet door content_postverwerking.js) ----------------------
+// postKopjes:   { conclusie: [...], beleid: [...], advies: [...], reden: [...], diagnose: [...] }
+//               extra kopwoorden van de praktijk, AANVULLEND op wat hier al staat.
+// postTypenUit: ['Radiologie', ...]                 typen zonder voorstel
+// postWeglaten: { Specialistenbrief: ['Advies huisarts'], ... }   blokken die niet in de samenvatting komen
+
+function pv_extraKopjes(groep) {
+    const k = (typeof pv_opties !== 'undefined' && pv_opties.postKopjes) || {};
+    return (k[groep] || []).map((w) => String(w).toLowerCase().trim()).filter(Boolean);
+}
+
+function pv_alleExtraKopjes() {
+    return ['conclusie', 'beleid', 'advies', 'reden', 'diagnose'].flatMap(pv_extraKopjes);
+}
+
+// Welke groep een labellijst is; volgorde telt ("conclusie/beleid" is een conclusielijst).
+function pv_kopGroep(labels) {
+    const l = labels.map((x) => x.toLowerCase());
+    if (l.some((x) => /^(conclusie|c\/|bespreking|discussie|indruk|beoordeling)/.test(x))) return 'conclusie';
+    if (l.some((x) => /^(beleid|b\/|plan|behandelbeleid)/.test(x))) return 'beleid';
+    if (l.some((x) => /^(advies|antwoord|beantwoording|verzoek aan)/.test(x))) return 'advies';
+    if (l.some((x) => /^(reden|vraag|vraagstelling|indicatie)/.test(x))) return 'reden';
+    if (l.some((x) => /diagnose|dsm/.test(x))) return 'diagnose';
+    return null;
+}
+
 // Kop = precies een bekende kop ("Beleid", "BELEID:"), of een langere kop die met een bekende kop
 // begint en eindigt op ":" of in HOOFDLETTERS staat. "Controle over 3 maanden" is dus geen kop.
 function pv_isKop(regel) {
     const kaal = regel.replace(/:\s*$/, '').trim();
     const r = kaal.toLowerCase();
     if (!r || r.length > 45) return false;
-    if (PV_KOPPEN.includes(r)) return true;
-    const begintMetKop = PV_KOPPEN.some((k) => r.startsWith(k + ' ') || r.startsWith(k + '/'));
+    const koppen = PV_KOPPEN.concat(pv_alleExtraKopjes());
+    if (koppen.includes(r)) return true;
+    const begintMetKop = koppen.some((k) => r.startsWith(k + ' ') || r.startsWith(k + '/'));
     return begintMetKop && (/:\s*$/.test(regel) || (kaal === kaal.toUpperCase() && /[A-Z]/.test(kaal)));
 }
 
@@ -69,6 +96,11 @@ function pv_isKop(regel) {
 // of een groet. opts.laatste: neem de laatste match (brieven herhalen soms koppen).
 function pv_sectie(regels, labels, opts) {
     opts = opts || {};
+    const groep = pv_kopGroep(labels);
+    if (groep) {
+        // Extra kopjes van de praktijk erbij; lang vóór kort zodat "conclusie en beleid" vóór "conclusie" gaat.
+        labels = Array.from(new Set(labels.concat(pv_extraKopjes(groep)))).sort((a, b) => b.length - a.length);
+    }
     const max = opts.max || 12;
     const re = new RegExp('^(?:' + labels.map((l) => l.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|') + ')\\s*(?::\\s*(.*)|\\s*$)', 'i');
     let gevonden = null;
@@ -143,10 +175,12 @@ function pv_specialisme(regels) {
 
 // --- Typen ---------------------------------------------------------------------------------------
 // Volgorde = voorrang (eerste match wint), zoals Dokkie: specifieke typen vóór de algemene brief.
+// type + blokken staan ook in PV_TYPEN_OPTIES (options.js) voor de instellingenpagina: houd gelijk.
 
 const PV_BRIEFTYPEN = [
     {
         type: 'GGZ',
+        blokken: ['Recent', 'Beleid'],
         test: (t) => (t.match(/dsm-?5|beschrijvende diagnose|behandelbeleid|tussentijds bericht huisarts|samenvatting behandeling|regiebehandelaar/g) || []).length >= 2,
         maak: (r) => {
             const diag = pv_eerste(r, [['dsm-5 classificatie', 'dsm-5', 'beschrijvende diagnose', 'diagnose']], { max: 3 });
@@ -158,6 +192,7 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'Ergotherapie',
+        blokken: ['Hulpvraag', 'Doelen'],
         test: (t) => /ergotherap/.test(t) && /eindverslag|tussentijds verslag|behandelperiode|behandeldoelen|ergotherapeutische conclusie/.test(t),
         maak: (r, t) => {
             const soort = (t.match(/\b(eindverslag|tussentijds verslag|startverslag)\b/) || [])[1];
@@ -170,6 +205,7 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'JGZ',
+        blokken: [],
         test: (t) => /\b(jgz|jeugdgezondheidszorg|jeugdarts|jeugdverpleegkundige|rijksvaccinatieprogramma)\b/.test(t),
         maak: (r, t) => {
             const vacc = t.match(/gevaccineerd\s+tegen\s+([^\n.]+)/);
@@ -179,6 +215,7 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'MDO',
+        blokken: ['Reden', 'Conclusie', 'Advies'],
         test: (t) => (t.match(/verslag\s+\S+\s+bespreking|datum mdo|deelnemerslijst|conclusie en advies bij|multidisciplina/g) || []).length >= 2,
         maak: (r) => {
             const reden = pv_sectie(r, ['reden bespreking', 'reden van bespreking', 'vraagstelling'], { max: 3 });
@@ -189,6 +226,7 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'Waarneembericht',
+        blokken: ['(E)', '(P)'],
         test: (t) => [/\([sp]\)\s*\[[a-z]+\]/.test(t), /telefonische triage|fysieke triage|hulpvraag|klacht\/beloop/.test(t),
             /spoedpost|huisartsenpost|\bhap\b|waarneem/.test(t)].filter(Boolean).length >= 2,
         maak: (r, t, ruw) => {
@@ -205,6 +243,7 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'Operatieverslag',
+        blokken: ['Conclusie', 'Beleid'],
         test: (t) => /operatiedatum|operatieverslag|verrichting\(en\)|postoperatieve conclusie/.test(t.slice(0, 1200))
             && !/reden van opname|medicatie bij ontslag|opgenomen op de afdeling/.test(t.slice(0, 2500)),
         maak: (r) => {
@@ -216,6 +255,7 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'Pathologie',
+        blokken: [],
         test: (t) => /pathologisch onderzoek|patholoog|afd\.? pathologie|pathologische anatomie/.test(t) && /(^|\n)\s*(macroscopie|microscopie)/.test(t),
         maak: (r) => {
             const concl = pv_sectie(r, ['conclusie', 'pa-conclusie', 'diagnose'], { max: 10, laatste: true });
@@ -225,6 +265,7 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'Scopie',
+        blokken: ['Indicatie', 'Conclusie', 'Advies'],
         test: (t) => /\b(colo(?:no)?scopie|gastroscopie|sigmo[iï]doscopie|duodenoscopie|bronchoscopie|hysteroscopie|cystoscopie|artroscopie|arthroscopie|enteroscopie|rectoscopie|oesofagoscopie)\b/.test(t.slice(0, 800)),
         maak: (r, t) => {
             const naam = pv_hoofdletter((t.slice(0, 800).match(/\b(colo(?:no)?scopie|gastroscopie|sigmo[iï]doscopie|duodenoscopie|bronchoscopie|hysteroscopie|cystoscopie|artroscopie|arthroscopie|enteroscopie|rectoscopie|oesofagoscopie)\b/) || [])[1] || 'Scopie');
@@ -236,6 +277,7 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'Radiologie',
+        blokken: [],
         test: (t) => /radiologiebericht|uitgevoerde onderzoeken|\bradiolo/.test(t) && /(conclusie|indruk|beoordeling)/.test(t),
         maak: (r, t) => {
             const m = t.match(/(?:^|\n)\s*((?:echo|echografie|mri|ct|cta|röntgen|rontgen|rtg|x-?thorax|thorax|mammografie|dexa|pet-?ct)(?:[ -][a-zà-ÿ]+){0,3})\s*:/);
@@ -247,6 +289,7 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'Kweek',
+        blokken: ['Resistentie'],
         test: (t) => /streeklab|microbiolog/.test(t) || /(^|\n)\s*(bacteriologie|virologie|mycologie|parasitologie)\s*(\/|\n|$)/.test(t),
         maak: (r) => {
             const materiaal = (r.find((x) => /^materiaal\b/i.test(x)) || '').replace(/^materiaal\s*:?\s*/i, '');
@@ -261,6 +304,7 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'Ambulance',
+        blokken: [],
         test: (t) => /regionale ambulance|ritformulier|\bambulancedienst\b/.test(t),
         maak: (r) => {
             const g = pv_sectie(r, ['gebeurtenis', 'reden van inzet', 'bevindingen'], { max: 4 });
@@ -269,6 +313,7 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'Meedenkadvies',
+        blokken: ['Vraag', 'Advies', 'Beleid'],
         test: (t) => (/(^|\n)\s*vraag\s*:/.test(t) && /(^|\n)\s*(antwoord|advies|beantwoording)\s*:/.test(t))
             || /\b(meedenkconsult|meedenkadvies|teleconsult|meekijkconsult)\b/.test(t) && !/(^|\n)\s*(anamnese|lichamelijk onderzoek)\s*:?\s*\n/.test(t),
         maak: (r) => {
@@ -281,6 +326,7 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'Opname',
+        blokken: ['Reden', 'Conclusie', 'Beleid'],
         test: (t) => /reden van opname|opgenomen (?:op|van)\b/.test(t),
         maak: (r) => {
             const reden = pv_sectie(r, ['reden van opname'], { max: 3 });
@@ -293,10 +339,11 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'Specialistenbrief',
+        blokken: ['Beleid', 'Advies huisarts'],
         test: () => true,
         maak: (r) => {
             const concl = pv_eerste(r, [['conclusie/beleid', 'conclusie en beleid', 'conclusie/discussie', 'discussie/conclusie', 'bespreking/conclusie'],
-                ['conclusie', 'c/', 'bespreking', 'discussie', 'samenvatting en werkdiagnose', 'werkdiagnose', 'diagnose']], { max: 8, laatste: true });
+                ['conclusie', 'c/', 'bespreking', 'discussie', 'beoordeling', 'indruk', 'samenvatting en werkdiagnose', 'werkdiagnose', 'diagnose']], { max: 8, laatste: true });
             const beleid = pv_eerste(r, [['beleid en vervolgafspraken', 'beleid', 'b/', 'plan']], { max: 6 });
             const advies = pv_sectie(r, ['advies aan de huisarts', 'adviezen aan de huisarts', 'verzoek aan de huisarts', 'vraag aan de huisarts', 'advies huisarts'], { max: 5 });
             const spec = pv_specialisme(r);
@@ -388,7 +435,11 @@ async function pv_briefAnalyse(info) {
     const regels = pv_regels(ruw);
     const t = pv_normRegels(ruw);
     const def = PV_BRIEFTYPEN.find((d) => d.test(t));
-    const delen = def.maak(regels, t, ruw).filter(Boolean);
+    if ((pv_opties.postTypenUit || []).includes(def.type)) return null;
+    // Blokken die de gebruiker bij dit type niet wil ("Beleid: …", "(P) …"); de kopregel blijft altijd.
+    const weg = ((pv_opties.postWeglaten || {})[def.type] || []);
+    const isWeg = (deel) => weg.some((b) => deel.startsWith(b + ':') || deel.startsWith(b + ' '));
+    const delen = def.maak(regels, t, ruw).filter(Boolean).filter((d, i) => i === 0 || !isWeg(d));
     const samenvatting = delen.join('\n').trim();
     const diagnoseTekst = (def.diagnose && def.diagnose(regels, t, ruw))
         || pv_eerste(regels, [['diagnose', 'werkdiagnose', 'conclusie', 'c/']], { max: 3, laatste: true })

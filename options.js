@@ -41,6 +41,105 @@ function getStorage(cb) {
     }
   }
 }
+// --- Postverwerking brieven: typen, weg te laten blokken, extra kopjes ---------------------------
+// Houd gelijk met PV_BRIEFTYPEN (type + blokken) in content_postverwerking_brief.js.
+const PV_TYPEN_OPTIES = [
+  { type: 'Specialistenbrief', blokken: ['Beleid', 'Advies huisarts'] },
+  { type: 'Opname', blokken: ['Reden', 'Conclusie', 'Beleid'] },
+  { type: 'Meedenkadvies', blokken: ['Vraag', 'Advies', 'Beleid'] },
+  { type: 'Radiologie', blokken: [] },
+  { type: 'Scopie', blokken: ['Indicatie', 'Conclusie', 'Advies'] },
+  { type: 'Pathologie', blokken: [] },
+  { type: 'Kweek', blokken: ['Resistentie'] },
+  { type: 'Operatieverslag', blokken: ['Conclusie', 'Beleid'] },
+  { type: 'Waarneembericht', blokken: ['(E)', '(P)'] },
+  { type: 'GGZ', blokken: ['Recent', 'Beleid'] },
+  { type: 'MDO', blokken: ['Reden', 'Conclusie', 'Advies'] },
+  { type: 'Ergotherapie', blokken: ['Hulpvraag', 'Doelen'] },
+  { type: 'JGZ', blokken: [] },
+  { type: 'Ambulance', blokken: [] }
+];
+const PV_KOPJES_GROEPEN = [
+  { groep: 'conclusie', label: 'Conclusie', voorbeeld: 'beoordeling, indruk, samenvatting' },
+  { groep: 'beleid', label: 'Beleid', voorbeeld: 'plan, afspraken, vervolg' },
+  { groep: 'advies', label: 'Advies aan huisarts', voorbeeld: 'aanbeveling, verzoek' },
+  { groep: 'reden', label: 'Reden / vraag', voorbeeld: 'reden van consult, vraagstelling' },
+  { groep: 'diagnose', label: 'Diagnose', voorbeeld: 'werkhypothese' }
+];
+
+function renderPostverwerkingOpties(data) {
+  const uit = data.postTypenUit || [];
+  const weg = data.postWeglaten || {};
+  const kopjes = data.postKopjes || {};
+  const lijst = document.getElementById('pv-typen-lijst');
+  lijst.innerHTML = '';
+  PV_TYPEN_OPTIES.forEach(({ type, blokken }) => {
+    const rij = document.createElement('div');
+    rij.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:4px 0;font-size:13px;color:#4a5568;';
+    const aan = document.createElement('label');
+    aan.style.cssText = 'min-width:150px;display:flex;align-items:center;gap:6px;font-weight:500;';
+    aan.innerHTML = '<input type="checkbox" class="pv-type">';
+    aan.querySelector('input').dataset.type = type;
+    aan.querySelector('input').checked = !uit.includes(type);
+    aan.appendChild(document.createTextNode(type));
+    rij.appendChild(aan);
+    if (blokken.length) {
+      const span = document.createElement('span');
+      span.textContent = 'laat weg:';
+      span.style.color = '#a0aec0';
+      rij.appendChild(span);
+      blokken.forEach((blok) => {
+        const l = document.createElement('label');
+        l.style.cssText = 'display:flex;align-items:center;gap:4px;';
+        l.innerHTML = '<input type="checkbox" class="pv-weg">';
+        const cb = l.querySelector('input');
+        cb.dataset.type = type;
+        cb.dataset.blok = blok;
+        cb.checked = (weg[type] || []).includes(blok);
+        l.appendChild(document.createTextNode(blok));
+        rij.appendChild(l);
+      });
+    }
+    lijst.appendChild(rij);
+  });
+
+  const kl = document.getElementById('pv-kopjes-lijst');
+  kl.innerHTML = '';
+  PV_KOPJES_GROEPEN.forEach(({ groep, label, voorbeeld }) => {
+    const rij = document.createElement('div');
+    rij.style.cssText = 'display:flex;align-items:center;gap:10px;padding:3px 0;font-size:13px;color:#4a5568;';
+    const l = document.createElement('span');
+    l.textContent = label;
+    l.style.minWidth = '150px';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'pv-kopjes';
+    inp.dataset.groep = groep;
+    inp.placeholder = 'bijv. ' + voorbeeld;
+    inp.value = (kopjes[groep] || []).join(', ');
+    inp.style.cssText = 'flex:1;padding:4px 8px;border:1px solid #cbd5e0;border-radius:4px;font-size:13px;';
+    rij.appendChild(l);
+    rij.appendChild(inp);
+    kl.appendChild(rij);
+  });
+}
+
+function collectPostverwerkingOpties() {
+  const postTypenUit = Array.from(document.querySelectorAll('.pv-type'))
+    .filter((cb) => !cb.checked).map((cb) => cb.dataset.type);
+  const postWeglaten = {};
+  document.querySelectorAll('.pv-weg').forEach((cb) => {
+    if (!cb.checked) return;
+    (postWeglaten[cb.dataset.type] = postWeglaten[cb.dataset.type] || []).push(cb.dataset.blok);
+  });
+  const postKopjes = {};
+  document.querySelectorAll('.pv-kopjes').forEach((inp) => {
+    const woorden = inp.value.split(',').map((w) => w.trim()).filter(Boolean);
+    if (woorden.length) postKopjes[inp.dataset.groep] = woorden;
+  });
+  return { postTypenUit, postWeglaten, postKopjes };
+}
+
 function setStorage(data, cb) {
   if (chrome && chrome.storage && chrome.storage.sync) {
     chrome.storage.sync.set(data, cb);
@@ -420,6 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('opt-pdf-export').checked = data.pdfExport !== false;
     document.getElementById('opt-postverwerking-lab').checked = data.postverwerkingLab !== false;
     document.getElementById('opt-postverwerking-brief').checked = data.postverwerkingBrief !== false;
+    renderPostverwerkingOpties(data);
     document.getElementById('opt-zorgdomein').checked = data.zorgdomeinSnelkoppelingen !== false;
     // Alleen renderen als er data bestaat
     if (data.btnLabels && data.btnLabels.length > 0) {
@@ -443,7 +543,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const postverwerkingBrief = document.getElementById('opt-postverwerking-brief').checked;
     const zorgdomeinSnelkoppelingen = document.getElementById('opt-zorgdomein').checked;
     const btnLabels = collectBtnLabels();
-    setStorage({ klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, postverwerkingLab, postverwerkingBrief, zorgdomeinSnelkoppelingen, btnLabels }, () => {
+    const { postTypenUit, postWeglaten, postKopjes } = collectPostverwerkingOpties();
+    setStorage({ postTypenUit, postWeglaten, postKopjes, klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, postverwerkingLab, postverwerkingBrief, zorgdomeinSnelkoppelingen, btnLabels }, () => {
       document.getElementById('status').textContent = 'Opgeslagen!';
       setTimeout(() => document.getElementById('status').textContent = '', 1500);
     });

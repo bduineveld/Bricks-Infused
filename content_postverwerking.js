@@ -735,5 +735,14 @@ loadGlobalOptions(function (options) {
         timer = setTimeout(() => { timer = null; pv_check(); }, 300);
     });
     observer.observe(document.body, { childList: true, subtree: true });
+    // Opties gewijzigd (bv. kopjes of weg te laten blokken): opnieuw analyseren zonder verversen.
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'sync') return;
+        Object.keys(changes).forEach((k) => { pv_opties[k] = changes[k].newValue; });
+        pv_berichtCache.clear();
+        pv_verborgen = null;
+        document.querySelectorAll('.' + PV_CARD_CLASS).forEach((n) => n.remove());
+        pv_check();
+    });
     pv_check();
 });

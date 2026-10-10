@@ -487,10 +487,29 @@
                   style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(alleen voorstel; je slaat zelf op)</span></label>
             </div>
 
-            <div class="checkbox-item">
+            <div class="checkbox-item has-expandable" id="postverwerking-brief-item">
               <input type="checkbox" id="opt-postverwerking-brief">
               <label for="opt-postverwerking-brief">Postverwerking brieven: voorstel samenvatting en episode <span
                   style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(specialist, radiologie, scopie, PA, kweek, HAP, GGZ, MDO e.a.; alleen voorstel)</span></label>
+              <button type="button" class="expand-toggle collapsed" data-target="postverwerking-brief-section"></button>
+            </div>
+
+            <div class="expandable-section collapsed" id="postverwerking-brief-section">
+              <div style="background: #f7fafc; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #2f855a;">
+                <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 14px; font-weight: 600;">Per berichttype</p>
+                <p style="margin: 0 0 10px 0; color: #718096; font-size: 12px; line-height: 1.5;">
+                  Vinkje uit = geen voorstel voor dat type. Achter "laat weg" kies je blokken die je nooit in de
+                  samenvatting wilt; de eerste regel (bv. de conclusie) blijft altijd staan.
+                </p>
+                <div id="pv-typen-lijst"></div>
+
+                <p style="margin: 18px 0 8px 0; color: #4a5568; font-size: 14px; font-weight: 600;">Extra kopjes in brieven</p>
+                <p style="margin: 0 0 10px 0; color: #718096; font-size: 12px; line-height: 1.5;">
+                  Infused zoekt in brieven naar kopjes als "Conclusie" en "Beleid". Gebruiken jullie ziekenhuizen andere
+                  woorden, zet ze hier, gescheiden door komma's. Aanvullend: wat Infused al kent blijft werken.
+                </p>
+                <div id="pv-kopjes-lijst"></div>
+              </div>
             </div>
 
             <div class="checkbox-item">
