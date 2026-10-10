@@ -116,10 +116,31 @@ function uprevent_pickSeed(patientId) {
     ) || visible[0] || seeds[0];
 }
 
+/**
+ * Elk geopend dossier is een div.consult-content[data-patientid] (meerdere tegelijk
+ * in de DOM bij multi-dossier). Links naar /consult/<id> bestaan niet (meer), dus
+ * daarop matchen viel altijd terug op "eerste zichtbare" = soms de verkeerde patiënt.
+ * Met bekende patientId zonder bijpassend dossier: null (liever geen data dan die van een ander).
+ */
 function uprevent_findConsultRoot(patientId) {
+    if (patientId) {
+        const roots = Array.from(document.querySelectorAll(`.consult-content[data-patientid="${patientId}"]`));
+        if (roots.length) return roots.find(uprevent_isDisplayed) || roots[0];
+        if (document.querySelector('.consult-content[data-patientid]')) return null;
+    }
     const seed = uprevent_pickSeed(patientId);
     if (!seed) return document;
     return uprevent_widenToSingleDossier(seed);
+}
+
+/** Datum (dd-mm-jjjj) van het journaalcontact waar deze regel onder valt. */
+function uprevent_regelDate(regel) {
+    const contact = regel.closest('.journaal-contact');
+    const info = contact && contact.querySelector('.journaal-contact-info');
+    if (!info) return null;
+    // textContent plakt datum en initialen aan elkaar ("09-10-2026DR"), dus geen \b
+    const m = (info.textContent || '').match(/(?<!\d)(\d{1,2}-\d{1,2}-\d{4})(?!\d)/);
+    return m ? uprevent_parseDdMmYyyyToUtcDate(m[1]) : null;
 }
 
 function uprevent_one(root, selector) {
@@ -511,7 +532,103 @@ function uprevent_collectMedicationText(root) {
 // de export (privacy); leeftijd blijft wel als getal. Bloeddruk als één regel
 // zodat de U-Prevent-parser hem via RR/bloeddruk-patroon herkent. Eenheden
 // worden expliciet meegestuurd zodat de parser ze niet hoeft te raden.
-function uprevent_collectText(root) {
+// --- Metingen via Bricks-API (zelfde bron als Metingen > Uitslagen) -----------------
+// GetBeschikbaarByPatient → meettypes (WCIAMemo, Naam, MetingEenheid);
+// GetUitslagenByMetingTypen → per type Uitslagen { Datum, WaardeDisplay, MetingEenheid }.
+// GetUitslagenByPatient geeft "Geen toegang" vanuit het dossier, deze twee niet.
+
+const UPREVENT_API_MATCHERS = {
+    sys: (t) => t.memo === 'RRSY',
+    dia: (t) => t.memo === 'RRDI',
+    cholTotal: (t) => t.memo === 'CHOL',
+    hdl: (t) => t.memo === 'HDL',
+    ldl: (t) => t.memo === 'LDL',
+    nonHdl: (t) => /\bnon-?\s*hdl/i.test(t.naam),
+    triglycerides: (t) => t.memo === 'TRIG',
+    egfr: (t) => /\begfr\b/i.test(t.naam),
+    hba1c: (t) => /hba1c/i.test(t.naam),
+    creatinine: (t) => /^(kreatinine|creatinine)\b/i.test(t.naam) && t.wcia.includes('/B/'),
+    lengte: (t) => t.memo === 'LNGP',
+    gewicht: (t) => t.memo === 'GEW',
+    bmi: (t) => t.memo === 'QEUT',
+    smoking: (t) => t.memo === 'ROOK',
+    acr: (t) => /albumine.?creatinine/i.test(t.naam),
+    microalbumine: (t) => /micro.?albumine/i.test(t.naam)
+};
+
+function uprevent_rv(res) {
+    return res && res.ReturnValue !== undefined ? res.ReturnValue : res;
+}
+
+function uprevent_apiNumber(display) {
+    const m = String(display || '').match(/-?\d+(?:[.,]\d+)?/);
+    return m ? m[0].replace(',', '.') : null;
+}
+
+/**
+ * Nieuwste uitslag per U-Prevent-veld (op Datum, niet op volgorde van de API).
+ * Resultaat in hetzelfde formaat als de journaal-scrape: { key: '1.23', keyUnit, … }.
+ */
+async function uprevent_fetchLabsViaApi(patientId) {
+    if (!window.bricksBridge || typeof window.bricksBridge.doApi !== 'function' || !(patientId > 0)) return null;
+    const beschikbaar = uprevent_rv(await window.bricksBridge.doApi(
+        'LabBepalingMeting', 'GetBeschikbaarByPatient', { patientId })) || [];
+    const typeKey = new Map();
+    beschikbaar.forEach((t) => {
+        const info = {
+            wcia: String(t.WCIAMemo || '').toUpperCase(),
+            memo: String(t.WCIAMemo || '').split('/')[0].toUpperCase(),
+            naam: String(t.Naam || t.Memo || '')
+        };
+        const key = Object.keys(UPREVENT_API_MATCHERS).find((k) => UPREVENT_API_MATCHERS[k](info));
+        if (key) typeKey.set(t.Id, key);
+    });
+    if (!typeKey.size) return {};
+
+    const groepen = uprevent_rv(await window.bricksBridge.doApi(
+        'LabBepalingMeting', 'GetUitslagenByMetingTypen', { patientId, metingTypeIds: [...typeKey.keys()] })) || [];
+    const newest = {};
+    const byKeyAll = {};
+    groepen.forEach((g) => {
+        const key = typeKey.get(g.MetingType && g.MetingType.Id) || typeKey.get((g.Uitslagen || [])[0]?.MetingTypeId);
+        if (!key) return;
+        (g.Uitslagen || []).forEach((u) => {
+            const time = new Date(u.Datum).getTime();
+            if (isNaN(time)) return;
+            const entry = { u, time, day: String(u.Datum).slice(0, 10) };
+            (byKeyAll[key] = byKeyAll[key] || []).push(entry);
+            if (!newest[key] || time > newest[key].time) newest[key] = entry;
+        });
+    });
+
+    // Bloeddruk als paar: diastolisch van dezelfde dag als de nieuwste systolische
+    if (newest.sys && byKeyAll.dia) {
+        const sameDay = byKeyAll.dia.filter((e) => e.day === newest.sys.day).sort((a, b) => b.time - a.time)[0];
+        if (sameDay) newest.dia = sameDay;
+    }
+
+    const labs = {};
+    Object.entries(newest).forEach(([key, { u }]) => {
+        const unit = String(u.MetingEenheid || '').trim();
+        if (key === 'smoking') {
+            const t = String(u.WaardeDisplay || u.WaardeTekst || '').trim().toLowerCase();
+            if (/^ja\b/.test(t)) labs.smoking = 'ja';
+            else if (/^nee\b|nooit/.test(t)) labs.smoking = 'nee';
+            else if (/voorheen|gestopt|ex/.test(t)) labs.smoking = 'voorheen';
+            return;
+        }
+        let val = uprevent_apiNumber(u.WaardeDisplay);
+        if (val == null) return;
+        if (key === 'lengte' && /^m$/i.test(unit) && parseFloat(val) < 3) val = String(Math.round(parseFloat(val) * 100));
+        labs[key] = val;
+        if (key === 'hba1c') labs.hba1cUnit = /%/.test(unit) ? '%' : 'mmol/mol';
+        if (key === 'creatinine') labs.creatinineUnit = unit ? unit.toLowerCase().replace('µ', 'u') : 'umol/L';
+        if (key === 'acr') labs.acrUnit = unit ? unit.toLowerCase().replace(/\s/g, '') : null;
+    });
+    return labs;
+}
+
+function uprevent_collectText(root, apiLabs) {
     const lines = [];
     const seen = new Set();
     const push = (s) => {
@@ -577,8 +694,15 @@ function uprevent_collectText(root) {
         }
     }
 
-    // Journaal entries are rendered top = newest, so document order = newest-first.
-    const regels = uprevent_all(root, '.journaal-contact-regel .split-text');
+    // Nieuwste waarde op contactdatum, niet op DOM-volgorde: het journaal kan anders
+    // gesorteerd/gefilterd zijn. Gelijke datum of geen datum: DOM-volgorde blijft.
+    const regels = Array.from(uprevent_all(root, '.journaal-contact-regel .split-text'))
+        .map((el, order) => {
+            const date = uprevent_regelDate(el);
+            return { el, order, time: date ? date.getTime() : -Infinity };
+        })
+        .sort((a, b) => (b.time - a.time) || (a.order - b.order))
+        .map((r) => r.el);
     const labs = {
         sys: null, dia: null,
         hba1c: null, hba1cUnit: null,
@@ -589,6 +713,10 @@ function uprevent_collectText(root) {
         lengte: null, gewicht: null, bmi: null,
         acr: null, acrUnit: null, microalbumine: null
     };
+    // API-waarden eerst (exacte meetdatum); journaal vult alleen aan wat ontbreekt
+    if (apiLabs) {
+        Object.keys(labs).forEach((k) => { if (apiLabs[k] != null) labs[k] = apiLabs[k]; });
+    }
     const tryMatch = (key, text, re, transform) => {
         if (labs[key] != null) return;
         const m = text.match(re);
@@ -812,7 +940,17 @@ async function uprevent_onClick(e) {
 
     const root = uprevent_findConsultRoot(patientId);
     console.log('U-Prevent scrape scope', { patientId, rootClass: root && root.className });
-    const text = uprevent_collectText(root);
+    if (!root) {
+        uprevent_showToast('Kon het dossier van de actieve patiënt niet vinden. Open het dossier en probeer opnieuw.', 'error');
+        return;
+    }
+    let apiLabs = null;
+    try {
+        apiLabs = await uprevent_fetchLabsViaApi(parseInt(patientId, 10));
+    } catch (err) {
+        console.warn('U-Prevent: metingen via API mislukt, alleen journaal', err);
+    }
+    const text = uprevent_collectText(root, apiLabs);
     const age = uprevent_detectAge(root);
     const episodeFlags = uprevent_episodeFlagsFromCodes(uprevent_collectEpisodeIcpcCodes(root));
     uprevent_showPicker(text, age, episodeFlags);
