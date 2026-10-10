@@ -7,6 +7,8 @@ const defaultOptions = {
   uprevent: false,
   medicijnMarkeringen: true,
   pdfExport: true,
+  postverwerkingLab: true,
+  postverwerkingBrief: true,
   zorgdomeinSnelkoppelingen: true,
   btnLabels: []
 };

@@ -122,6 +122,72 @@ Settings export/import writes compact JSON to `UISettings.Vars.BricksInfused` vi
 
 ---
 
+## Postverwerking (Communicatie → bericht)
+
+Researched 2026-10-10 in DemoDigidok (testbericht MEDLAB 15-04-2018).
+
+URL: `/{klantnummer}/communicatie/{?}/{berichtId}` (e.g. `/3163/communicatie/10035/10013`, 10013 = berichtId).
+
+Calls Bricks makes when a bericht is opened:
+
+```
+Bericht.BerichtInfo(berichtId)
+Patient.IsPortaalGebruiker(patientId)
+Episode.GetByPatient(patientId)
+HisRegie.SetHuidigBerichtId(berichtId)
+```
+
+`B.bericht.berichtInfo(id).ReturnValue` has everything the right pane shows:
+`TelefoonboekContactId`, `TelefoonboekContact`, `GekoppeldePatientId`, `GekoppeldeEpisodeId` (-1 = Geen),
+`GekoppeldeEpisode`, `Samenvatting`, `SamenvattingGegenereerd`, `Memo`, `Soort` (e.g. `"MedLab"`),
+`Afzender` {NaamInstelling, NaamAfdeling, NaamPersoon, Specialisme, …}, `Overig` {Datum, Aan, Type, Artsen},
+`HTML`, `Plat` (plain-ish text, contains HTML for lab tables), `Vrijgave`, `DocumentCategorieId`.
+
+Other useful calls:
+
+- `B.bericht.mogelijkeTelefoonboekContacten(berichtId)` → `[{ Id, Omschrijving }]` (adresboek suggestions)
+- `B.episode.getByPatient(patientId)` → `[{ Id, ICPCCode, TetraName (= title), BeginDatum, EindDatum, IsGesloten, EpiAttentieSoort, LaatsteContactDatum, … }]`
+- `B.bericht.berichtOpslaan(berichtId, patientId, datum, episodeId, telefoonBoekContactId, samenvatting, memo, vrijgave, econsultAntwoord, declaratie, pageIds, econsultBijlagen)` — what Opslaan does (not yet observed live)
+- `B.episode.createEpisode(patientId, icpc, titel)` / `getOrCreateEpisodeId(...)` — create immediately, no dialog
+- `B.aISamenvatting.berichtSamenvatting(berichtId)` — native Bricks AI summary (not called; unknown cost/data flow)
+
+ICPC lookup:
+
+- `B.ICPC.zoek(query)` → `ICPC.Zoek {query}` → `[{ Code, Omschrijving, AutomatischeAttentie, Vervallen }]` — works from communicatie
+  (query can be a word, e.g. "diabetes", or a code prefix).
+- `B.voorstelICPC.query(zoektekst)` → **"Geen toegang"** here.
+- Also present: `ICPC.getByCode(code)`, `ICPCPatientTitel.getByICPC`, `nHGStandaard.getByICPC`.
+
+Lab history (trend):
+
+- Each lab row in `BerichtInfo.HTML` ends with an HTML comment `<!--code:LDL/B/-->` = WCIA code.
+- Afnamedatum: `DATUM: dd-mm-jjjj hh:mm` in the first table of the HTML.
+- Bricks' own "Historische gegevens" dialog (Overig → `fa-history` button) calls
+  `LabBepalingMeting.GetUitslagenByWCIACodes(patientId, codes)` → `[{ MetingType {Id, Naam, WCIAMemo, …}, Uitslagen: [{ Datum, Memo (= WCIA), WaardeDisplay ("4,05"), Waarde ("4050" = ×1000), Afwijkend, MinVolgensLab1000, MaxVolgensLab1000, UitvoerderSoort, … }] }]`.
+  Includes the bericht's own result and possibly NEWER results (old bericht) → pick "previous" by date < afnamedag, never by array order.
+- `LabBepalingMeting.GetUitslagenByPatient` → "Geen toegang" from the communicatie screen.
+
+Gotchas:
+
+- `B.bericht.berichtPlainText` and `B.episode.getActueleEpisoden` return **"Geen toegang"** here.
+- **Any failing `doApi` call pops a global red "Fout bij uitvoeren" modal in Bricks.** Wrap calls and avoid speculative RPCs in production code.
+- `B.aISamenvatting.berichtSamenvatting(id)` returned `false` in DemoDigidok (probably tied to Juvoly / not enabled). Not used: risk of sending patient data.
+- Unparseable berichten get `Soort: "Fout"`, no Afzender/Overig; only `HTML` (plain letter text) is available.
+
+Right pane DOM (`.koppelinfo.vertical-view`):
+
+- Samenvatting: `textarea.samenvatting` in `.koppelinfo-input-container` (with "Start met gebruikersnaam" checkbox)
+- Adresboekcontact: `.koppelinfo-header .koppelinfo-contact` (same picker the existing communicatie-knoppen use)
+- Episode list: `<tr>` per episode with `input[type=radio]`, ICPC code in a leaf `span` under
+  `td.samecolumns-td > div.tt-table-cell > div.split-text`; sorted on laatste contact (top = most recent).
+  When the user picks a patient for an unlinked bericht, this list fills immediately, but
+  `BerichtInfo.GekoppeldePatientId` stays -1 until Opslaan — so Infused reads episodes from this list.
+- "Geen" row first; `[title="Nieuwe episode"]` (+) calls
+  `Episode.MaakNieuweEpisodeVoorPatient` and opens dialog "Episode toevoegen" (ICPC code, Naam, Begindatum,
+  Einddatum, Attentie, Opslaan/Annuleren). Annuleren creates nothing.
+
+---
+
 ## Contact / communicatie
 
 Consult contact type (koppelinfo-style) is not the Telefoonboek picker RPC alone:

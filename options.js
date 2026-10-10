@@ -418,6 +418,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('opt-uprevent').checked = !!data.uprevent;
     document.getElementById('opt-medicijn').checked = data.medicijnMarkeringen !== false;
     document.getElementById('opt-pdf-export').checked = data.pdfExport !== false;
+    document.getElementById('opt-postverwerking-lab').checked = data.postverwerkingLab !== false;
+    document.getElementById('opt-postverwerking-brief').checked = data.postverwerkingBrief !== false;
     document.getElementById('opt-zorgdomein').checked = data.zorgdomeinSnelkoppelingen !== false;
     // Alleen renderen als er data bestaat
     if (data.btnLabels && data.btnLabels.length > 0) {
@@ -437,9 +439,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const uprevent = document.getElementById('opt-uprevent').checked;
     const medicijnMarkeringen = document.getElementById('opt-medicijn').checked;
     const pdfExport = document.getElementById('opt-pdf-export').checked;
+    const postverwerkingLab = document.getElementById('opt-postverwerking-lab').checked;
+    const postverwerkingBrief = document.getElementById('opt-postverwerking-brief').checked;
     const zorgdomeinSnelkoppelingen = document.getElementById('opt-zorgdomein').checked;
     const btnLabels = collectBtnLabels();
-    setStorage({ klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, zorgdomeinSnelkoppelingen, btnLabels }, () => {
+    setStorage({ klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, postverwerkingLab, postverwerkingBrief, zorgdomeinSnelkoppelingen, btnLabels }, () => {
       document.getElementById('status').textContent = 'Opgeslagen!';
       setTimeout(() => document.getElementById('status').textContent = '', 1500);
     });
