@@ -271,7 +271,7 @@
     }
 
     .expandable-section.expanded {
-      max-height: 1000px;
+      max-height: 3000px;
       opacity: 1;
     }
 
@@ -360,6 +360,156 @@
       display: inline-block;
     }
 
+
+    /* ---- Groepen, icoontjes en schakelaars ---- */
+    .groep-kop {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 28px 0 10px 0;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #718096;
+    }
+
+    .groep-kop:first-child {
+      margin-top: 0;
+    }
+
+    .groep-kop::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #e2e8f0;
+    }
+
+    .checkbox-group {
+      gap: 10px;
+    }
+
+    .checkbox-item {
+      padding: 12px 16px;
+    }
+
+    .opt-icon {
+      flex: 0 0 36px;
+      height: 36px;
+      border-radius: 9px;
+      background: #eef2ff;
+      color: #5a67d8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .opt-icon svg {
+      width: 20px;
+      height: 20px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .opt-icon.groen { background: #e6f6ee; color: #2f855a; }
+    .opt-icon.oranje { background: #fff4e5; color: #c05621; }
+    .opt-icon.rood { background: #fff0f0; color: #c53030; }
+
+    .checkbox-item label .desc {
+      display: block;
+      margin-top: 2px;
+      font-size: 12.5px;
+      font-weight: 400;
+      color: #718096;
+      line-height: 1.4;
+    }
+
+    /* Schakelaar: alleen het hoofdvinkje van een rij, niet de vinkjes in uitklapsecties. */
+    .checkbox-item > input[type="checkbox"] {
+      order: 2;
+      appearance: none;
+      -webkit-appearance: none;
+      flex: 0 0 38px;
+      width: 38px;
+      height: 22px;
+      border-radius: 11px;
+      background: #cbd5e0;
+      position: relative;
+      transition: background 0.2s ease;
+      margin: 0;
+    }
+
+    .checkbox-item > input[type="checkbox"]::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+      transition: transform 0.2s ease;
+    }
+
+    .checkbox-item > input[type="checkbox"]:checked {
+      background: #667eea;
+    }
+
+    .checkbox-item > input[type="checkbox"]:checked::after {
+      transform: translateX(16px);
+    }
+
+    .checkbox-item > input[type="checkbox"]:focus-visible {
+      outline: 2px solid #667eea;
+      outline-offset: 2px;
+    }
+
+    .checkbox-item > label {
+      order: 1;
+    }
+
+    .checkbox-item > .opt-icon {
+      order: 0;
+    }
+
+    /* Pijltje rechts naast de schakelaar i.p.v. eroverheen. */
+    .checkbox-item.has-expandable {
+      padding-right: 16px;
+    }
+
+    .checkbox-item.has-expandable label {
+      flex: 1;
+      display: block;
+    }
+
+    .checkbox-item > .expand-toggle {
+      order: 3;
+      position: static;
+      transform: none;
+      flex: 0 0 24px;
+    }
+
+    /* Ingeklapte sectie telt niet mee in de tussenruimte van de lijst. */
+    .checkbox-group > .expandable-section.collapsed {
+      margin-top: -10px;
+    }
+
+    .expandable-section > div:first-child,
+    .expandable-section > h3:first-child {
+      margin-left: 48px;
+    }
+
+    @media (max-width: 768px) {
+      .expandable-section > div:first-child,
+      .expandable-section > h3:first-child {
+        margin-left: 0;
+      }
+    }
+
     @media (max-width: 768px) {
       .container {
         padding: 16px;
@@ -406,6 +556,7 @@
       <form id="optionsForm">
         <!-- Basis instellingen -->
         <div class="section">
+          <div class="groep-kop">Algemeen</div>
           <div class="form-group">
             <label for="opt-klantnummer">Bricks klantnummer</label>
             <div style="display: flex; gap: 8px; align-items: center;">
@@ -415,114 +566,23 @@
           </div>
       
           <div class="checkbox-group">
-      
-      
+            <div class="groep-kop">Dossier &amp; journaal</div>
             <div class="checkbox-item">
+              <span class="opt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="M15 4v16"/></svg></span>
               <input type="checkbox" id="opt-resizer">
-              <label for="opt-resizer">Klik op het grijze tussenstuk in het journaal om widget-grootte aan te passen (Bricks layout-resize)</label>
+              <label for="opt-resizer">Widgets in het journaal herschalen<span class="desc">Klik op het grijze tussenstuk in het journaal om de widget-grootte aan te passen (layout-resize van Bricks).</span></label>
             </div>
-      
             <div class="checkbox-item">
-              <input type="checkbox" id="opt-declareren">
-              <label for="opt-declareren">In declaratiescherm consult enkel expliciet op gebeurd zetten</label>
-            </div>
-      
-            <div class="checkbox-item">
+              <span class="opt-icon rood"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3.5a5 5 0 0 1 7.07 7.07l-7.07 7.07a5 5 0 0 1-7.07-7.07z"/><path d="M7 7l7 7"/></svg></span>
               <input type="checkbox" id="opt-medicijn">
-              <label for="opt-medicijn">Opiaten en benzo's in medicatie authorisatielijst arceren</label>
+              <label for="opt-medicijn">Opiaten en benzo's markeren<span class="desc">Arceert opiaten en benzodiazepinen in de autorisatielijst van de medicatie.</span></label>
             </div>
-
-            <div class="checkbox-item has-expandable" id="comm-settings-item">
-              <input type="checkbox" id="opt-knoppen">
-              <label for="opt-knoppen">Communicatie adresboek snelkoppelingen</label>
-              <button type="button" class="expand-toggle collapsed" data-target="comm-knoppen-section"></button>
-            </div>
-      
-            <div class="expandable-section collapsed" id="comm-knoppen-section">
-              <h3 style="margin: 16px 0 12px 0; font-size: 1.1em; color: #4a5568;">Communicatie knoppen aanpassen</h3>
-              <div id="btnlabels-list"></div>
-              <button type="button" id="addBtnLabel" class="btn btn-secondary btn-small">Nieuwe knop toevoegen</button>
-            </div>
-      
-            <div class="checkbox-item has-expandable" id="zorgdomein-settings-item">
-              <input type="checkbox" id="opt-zorgdomein">
-              <label for="opt-zorgdomein">Zorgdomein snelkoppelingen <span style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(in het ZorgDomein-verwijsmenu)</span></label>
-              <button type="button" class="expand-toggle collapsed" data-target="zorgdomein-section"></button>
-            </div>
-
-            <div class="expandable-section collapsed" id="zorgdomein-section">
-              <div style="background: #f7fafc; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #667eea;">
-                <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 14px; line-height: 1.5;">
-                  De snelkoppelingen worden beheerd in de losse plugin <em>Zorgdomein Infused</em> (ook bruikbaar zonder
-                  Bricks). Bricks toont ze onder <strong>ZorgDomein</strong> in het verwijsmenu, start de verwijzing voor de
-                  actieve patiënt en Zorgdomein Infused opent daarna het gekozen formulier.
-                </p>
-                <p id="zorgdomein-installed-msg" style="display: none; margin: 12px 0 0 0; color: #2f855a; font-size: 13px; line-height: 1.5; font-weight: 500;"></p>
-                <button type="button" id="zorgdomein-manage" class="btn btn-secondary btn-small" style="display: none; margin-top: 12px;">Snelkoppelingen beheren</button>
-                <div id="zorgdomein-missing-block" style="display: none;">
-                  <p style="margin: 12px 0 0 0; color: #4a5568; font-size: 13px; line-height: 1.5;">
-                    <em>Zorgdomein Infused</em> is niet gevonden. Installeer die plugin om snelkoppelingen te gebruiken;
-                    bestaande snelkoppelingen uit Bricks Infused worden dan automatisch overgezet.
-                  </p>
-                  <p style="margin: 12px 0 0 0; font-size: 13px;">
-                    <a id="zorgdomein-install-link" href="#" target="_blank" rel="noopener"
-                      style="display: none; color: #667eea; text-decoration: none; font-weight: 500;">
-                      → Zorgdomein Infused installeren
-                    </a>
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div class="checkbox-item">
-              <input type="checkbox" id="opt-pdf-export">
-              <label for="opt-pdf-export">Exporteer brief als PDF <span
-                  style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(erg basic, is in
-                  ontwikkeling)</span></label>
-            </div>
-
-            <div class="checkbox-item">
-              <input type="checkbox" id="opt-postverwerking-lab">
-              <label for="opt-postverwerking-lab">Postverwerking lab: voorstel samenvatting en episode <span
-                  style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(alleen voorstel; je slaat zelf op)</span></label>
-            </div>
-
-            <div class="checkbox-item has-expandable" id="postverwerking-brief-item">
-              <input type="checkbox" id="opt-postverwerking-brief">
-              <label for="opt-postverwerking-brief">Postverwerking brieven: voorstel samenvatting en episode <span
-                  style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(specialist, radiologie, scopie, PA, kweek, HAP, GGZ, MDO e.a.; alleen voorstel)</span></label>
-              <button type="button" class="expand-toggle collapsed" data-target="postverwerking-brief-section"></button>
-            </div>
-
-            <div class="expandable-section collapsed" id="postverwerking-brief-section">
-              <div style="background: #f7fafc; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #2f855a;">
-                <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 14px; font-weight: 600;">Per berichttype</p>
-                <p style="margin: 0 0 10px 0; color: #718096; font-size: 12px; line-height: 1.5;">
-                  Vinkje uit = geen voorstel voor dat type. Achter "laat weg" kies je blokken die je nooit in de
-                  samenvatting wilt; de eerste regel (bv. de conclusie) blijft altijd staan.
-                </p>
-                <div id="pv-typen-lijst"></div>
-
-                <p style="margin: 18px 0 8px 0; color: #4a5568; font-size: 14px; font-weight: 600;">Extra kopjes in brieven</p>
-                <p style="margin: 0 0 10px 0; color: #718096; font-size: 12px; line-height: 1.5;">
-                  Infused zoekt in brieven naar kopjes als "Conclusie" en "Beleid". Gebruiken jullie ziekenhuizen andere
-                  woorden, zet ze hier, gescheiden door komma's. Aanvullend: wat Infused al kent blijft werken.
-                </p>
-                <div id="pv-kopjes-lijst"></div>
-              </div>
-            </div>
-
-            <div class="checkbox-item">
-              <input type="checkbox" id="opt-juvoly">
-              <label for="opt-juvoly">Juvoly-integratie <span style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(Juvoly-knop in SOEP-balk; na openen icoon-controls voor opnemen/samenvatten/overnemen)</span></label>
-            </div>
-
             <div class="checkbox-item has-expandable" id="uprevent-settings-item">
+              <span class="opt-icon rood"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg></span>
               <input type="checkbox" id="opt-uprevent">
-              <label for="opt-uprevent">U-Prevent risicocalculatoren <span style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(U-PRE-knop in patiëntdossier)</span></label>
-              <button type="button" class="expand-toggle collapsed" data-target="uprevent-section"></button>
+              <label for="opt-uprevent">U-Prevent risicocalculatoren<span class="desc">U-PRE-knop in het patiëntdossier; stuurt dossiergegevens naar U-Prevent Infused.</span></label>
+              <button type="button" class="expand-toggle collapsed" data-target="uprevent-section" aria-label="Meer instellingen"></button>
             </div>
-
             <div class="expandable-section collapsed" id="uprevent-section">
               <div style="background: #f7fafc; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #667eea;">
                 <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 14px; line-height: 1.5;">
@@ -552,16 +612,104 @@
                 </div>
               </div>
             </div>
+            <div class="groep-kop">Consult</div>
+            <div class="checkbox-item">
+              <span class="opt-icon oranje"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.8"/></svg></span>
+              <input type="checkbox" id="opt-declareren">
+              <label for="opt-declareren">Consult afhandelen: alleen expliciet op gebeurd<span class="desc">Bij het afhandelen van een consult wordt niets vanzelf op "gebeurd" gezet.</span></label>
+            </div>
+            <div class="checkbox-item">
+              <span class="opt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></span>
+              <input type="checkbox" id="opt-juvoly">
+              <label for="opt-juvoly">Juvoly-integratie<span class="desc">Juvoly-knop in de SOEP-balk; daarna knoppen voor opnemen, samenvatten en overnemen.</span></label>
+            </div>
+            <div class="groep-kop">Post &amp; communicatie</div>
+            <div class="checkbox-item">
+              <span class="opt-icon groen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3"/><path d="M7.5 15h9"/></svg></span>
+              <input type="checkbox" id="opt-postverwerking-lab">
+              <label for="opt-postverwerking-lab">Postverwerking lab<span class="desc">Voorstel voor samenvatting en episode bij labuitslagen. Alleen een voorstel: je slaat zelf op.</span></label>
+            </div>
+            <div class="checkbox-item has-expandable" id="postverwerking-brief-item">
+              <span class="opt-icon groen"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span>
+              <input type="checkbox" id="opt-postverwerking-brief">
+              <label for="opt-postverwerking-brief">Postverwerking brieven<span class="desc">Specialist, radiologie, scopie, PA, kweek, HAP, GGZ, MDO e.a. Uitklappen voor instellingen per type en eigen kopjes.</span></label>
+              <button type="button" class="expand-toggle collapsed" data-target="postverwerking-brief-section" aria-label="Meer instellingen"></button>
+            </div>
+            <div class="expandable-section collapsed" id="postverwerking-brief-section">
+              <div style="background: #f7fafc; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #2f855a;">
+                <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 14px; font-weight: 600;">Per berichttype</p>
+                <p style="margin: 0 0 10px 0; color: #718096; font-size: 12px; line-height: 1.5;">
+                  Vinkje uit = geen voorstel voor dat type. Achter "laat weg" kies je blokken die je nooit in de
+                  samenvatting wilt; de eerste regel (bv. de conclusie) blijft altijd staan.
+                </p>
+                <div id="pv-typen-lijst"></div>
 
+                <p style="margin: 18px 0 8px 0; color: #4a5568; font-size: 14px; font-weight: 600;">Extra kopjes in brieven</p>
+                <p style="margin: 0 0 10px 0; color: #718096; font-size: 12px; line-height: 1.5;">
+                  Infused zoekt in brieven naar kopjes als "Conclusie" en "Beleid". Gebruiken jullie ziekenhuizen andere
+                  woorden, zet ze hier, gescheiden door komma's. Aanvullend: wat Infused al kent blijft werken.
+                </p>
+                <div id="pv-kopjes-lijst"></div>
+              </div>
+            </div>
+            <div class="checkbox-item has-expandable" id="comm-settings-item">
+              <span class="opt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2V4z"/><circle cx="12" cy="10" r="2.5"/><path d="M8.5 16a3.5 3.5 0 0 1 7 0"/></svg></span>
+              <input type="checkbox" id="opt-knoppen">
+              <label for="opt-knoppen">Adresboek-snelkoppelingen<span class="desc">Knoppen naast het adresboekcontact om snel een vaste geadresseerde te kiezen.</span></label>
+              <button type="button" class="expand-toggle collapsed" data-target="comm-knoppen-section" aria-label="Meer instellingen"></button>
+            </div>
+            <div class="expandable-section collapsed" id="comm-knoppen-section">
+              <h3 style="margin: 16px 0 12px 0; font-size: 1.1em; color: #4a5568;">Communicatie knoppen aanpassen</h3>
+              <div id="btnlabels-list"></div>
+              <button type="button" id="addBtnLabel" class="btn btn-secondary btn-small">Nieuwe knop toevoegen</button>
+            </div>
+            <div class="checkbox-item">
+              <span class="opt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/></svg></span>
+              <input type="checkbox" id="opt-pdf-export">
+              <label for="opt-pdf-export">Brief exporteren als PDF<span class="desc">Extra keuze naast Export in het briefvenster, ook zonder BSN (nog basic, in ontwikkeling).</span></label>
+            </div>
+            <div class="groep-kop">Verwijzen</div>
+            <div class="checkbox-item has-expandable" id="zorgdomein-settings-item">
+              <span class="opt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h12"/><path d="M13 6l6 6-6 6"/></svg></span>
+              <input type="checkbox" id="opt-zorgdomein">
+              <label for="opt-zorgdomein">ZorgDomein-snelkoppelingen<span class="desc">In het ZorgDomein-verwijsmenu; beheer via de plugin Zorgdomein Infused.</span></label>
+              <button type="button" class="expand-toggle collapsed" data-target="zorgdomein-section" aria-label="Meer instellingen"></button>
+            </div>
+            <div class="expandable-section collapsed" id="zorgdomein-section">
+              <div style="background: #f7fafc; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #667eea;">
+                <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 14px; line-height: 1.5;">
+                  De snelkoppelingen worden beheerd in de losse plugin <em>Zorgdomein Infused</em> (ook bruikbaar zonder
+                  Bricks). Bricks toont ze onder <strong>ZorgDomein</strong> in het verwijsmenu, start de verwijzing voor de
+                  actieve patiënt en Zorgdomein Infused opent daarna het gekozen formulier.
+                </p>
+                <p id="zorgdomein-installed-msg" style="display: none; margin: 12px 0 0 0; color: #2f855a; font-size: 13px; line-height: 1.5; font-weight: 500;"></p>
+                <button type="button" id="zorgdomein-manage" class="btn btn-secondary btn-small" style="display: none; margin-top: 12px;">Snelkoppelingen beheren</button>
+                <div id="zorgdomein-missing-block" style="display: none;">
+                  <p style="margin: 12px 0 0 0; color: #4a5568; font-size: 13px; line-height: 1.5;">
+                    <em>Zorgdomein Infused</em> is niet gevonden. Installeer die plugin om snelkoppelingen te gebruiken;
+                    bestaande snelkoppelingen uit Bricks Infused worden dan automatisch overgezet.
+                  </p>
+                  <p style="margin: 12px 0 0 0; font-size: 13px;">
+                    <a id="zorgdomein-install-link" href="#" target="_blank" rel="noopener"
+                      style="display: none; color: #667eea; text-decoration: none; font-weight: 500;">
+                      → Zorgdomein Infused installeren
+                    </a>
+                  </p>
+                </div>
+              </div>
+            </div>
           </div> <!--checkbox-group end -->
         </div> <!--section 1 end -->
       
         <!-- Instellingen in- en exporteren -->
         <div class="section">
+          <div class="groep-kop">Back-up</div>
           <div class="expandable-item">
             <div class="expandable-header">
-              <h3 style="margin: 0; font-size: 1.2em; color: #4a5568;">Instellingen in- en exporteren <span
+              <span style="display: flex; align-items: center; gap: 12px;"><span class="opt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9a4 4 0 0 1 0 9z"/><path d="M12 12v5"/><path d="M9.5 14.5L12 12l2.5 2.5"/></svg></span>
+              <h3 style="margin: 0; font-size: 1em; font-weight: 500; color: #4a5568;">Instellingen in- en exporteren <span
                   style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(komt binnenkort)</span></h3>
+              </span>
               <button type="button" class="expand-toggle collapsed" data-target="import-export-section"></button>
             </div>
       

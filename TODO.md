@@ -2,7 +2,7 @@
 
 ## Instellingen
 
-- [ ] Instellingenpagina overzichtelijker maken, bijvoorbeeld met icoontjes per onderdeel
+- [x] Instellingenpagina overzichtelijker maken, bijvoorbeeld met icoontjes per onderdeel
       (de lijst met opties en uitklapsecties wordt lang, zeker sinds Postverwerking).
 
 ## Postverwerking — nog te testen
