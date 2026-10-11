@@ -350,6 +350,22 @@ Match drug names with NFD + strip diacritics so `codeïne` matches `CODEINE`.
 
 When adding features: **resolve active patientId first**, then API or scoped DOM — never bare `document.querySelectorAll` for consult widgets.
 
+### Autorisatie: patiënt per recept en labwaarden (2026-10-11)
+
+- The list is loaded with `HisRapport44.GetReceptRegels({ parameters })` → `[{ Id, PatientId, Patient ("Mw. X (41) 18-07-1985"),
+  Voorschrijver, Datum, ReceptRegels: [{ Id, Medicatie, Dosering, AantalHerhalingen, Waarschuwingen, ProfielRegelType, … }] }]`,
+  same order as `.rapport44-recept` in the DOM. No ATC/HPK code per regel. The DOM has no patientId
+  (name div has `title="Open dossier"`), so `bridge_main.js` wraps `B.doApi` and keeps `{ patientId, patient }`
+  from that response (`bricksBridge.autorisatieRecepten()`).
+- From the autorisatie screen: `LabBepalingMeting.GetBeschikbaarByPatient`, `GetUitslagenByMetingTypen` and
+  `GetUitslagenByWCIACodes` work; `LabBepalingMeting.GetMetingTypen` → "Geen toegang".
+- One call per patient is enough: `GetUitslagenByWCIACodes({ patientId, codes })` takes full NHG/WCIA codes as text
+  (not the short name "LDL" nor the number 542); unknown codes are simply ignored. Each uitslag has `Memo` = its code.
+- Codes from `Bepaling.GetList` (4209 bepalingen: Nummer, Omschrijving, WCIAMemo, …): eGFR `KREC/O/FB` (CKD-EPI),
+  `KREM/O/FB` (MDRD, vervallen) + `/PO`; kalium `K/B/`; Hb `HB/B/`; HbA1c `HBAC/B/` (IFCC), `HBAP/B/PO`, old
+  `HB1C/B/`, `GLHB/B/`; LDL `LDL/B/`, `LDLD/B/`, `LDL/B/PO`; TSH `TSH/B/`; FT4 `FT4/B/`; ALAT `ALAT/B/`.
+  Used in `MEDICIJN_LABWAARDEN` (medicijn_groepen.js).
+
 ### Brief PDF export (`ToonBericht`)
 
 Infused adds a caret (`.btn-pdf-export-caret`) next to Bricks’ **Export** in the brief modal footer — not a separate PDF button. Menu: **Export** (native click), **PDF**, **PDF zonder BSN**.

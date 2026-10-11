@@ -1364,45 +1364,8 @@ declareer_observer.observe(document.body, { childList: true, subtree: true });
 
 const MEDICIJN_MARK_ATTR = 'data-bricks-infused-medicijn';
 
-const MEDICIJN_CATEGORIES = [
-    {
-        id: 'opiaat',
-        className: 'medicijn-opiaat',
-        color: '#ffe4cc',
-        keywords: [
-            'morfine', 'oxycodon', 'fentanyl', 'codeine', 'codeïne', 'tramadol',
-            'buprenorfine', 'methadon', 'hydromorfon', 'pethidine', 'diamorfine'
-        ]
-    },
-    {
-        id: 'benzodiazepine',
-        className: 'medicijn-benzodiazepine',
-        color: '#fff2cc',
-        keywords: [
-            'oxazepam', 'temazepam', 'bromazepam', 'lorazepam', 'diazepam', 'alprazolam',
-            'clonazepam', 'midazolam', 'nitrazepam', 'flunitrazepam', 'triazolam',
-            'zolpidem', 'zopiclon'
-        ]
-    },
-    {
-        id: 'adhd',
-        className: 'medicijn-adhd',
-        color: '#f0f8cc',
-        keywords: [
-            'methylfenidaat', 'dexamfetamine', 'lisdexamfetamine', 'atomoxetine', 'guanfacine',
-            'clonidine', 'concerta', 'ritalin', 'medikinet', 'equasym', 'focalin', 'adderall',
-            'vyvanse', 'strattera', 'intuniv', 'kapvay'
-        ]
-    },
-    {
-        id: 'methotrexaat',
-        className: 'medicijn-methotrexaat',
-        color: '#ffcccc',
-        keywords: ['methotrexaat', 'amiodaron']
-    }
-];
-
-const MEDICIJN_ALL_CLASSES = MEDICIJN_CATEGORIES.map((c) => c.className);
+// Groepen (naam, kleur, woorden) staan in medicijn_groepen.js en zijn instelbaar in de opties.
+const MEDICIJN_LEGENDA_CLASS = 'bi-medicijn-legenda';
 
 function medicijn_normalize(text) {
     return String(text || '')
@@ -1439,9 +1402,29 @@ function medicijn_findNameEl(receptRegel) {
 }
 
 function medicijn_clearRegel(receptRegel) {
+    receptRegel.querySelectorAll('.bi-med-lab').forEach((n) => n.remove());
+    delete receptRegel.__biGroep;
     receptRegel.style.backgroundColor = '';
-    receptRegel.classList.remove(...MEDICIJN_ALL_CLASSES);
+    receptRegel.classList.remove(...Array.from(receptRegel.classList).filter((c) => c.startsWith('medicijn-')));
     receptRegel.removeAttribute(MEDICIJN_MARK_ATTR);
+}
+
+// Kleine legenda boven de lijst: alleen de groepen die in deze lijst voorkomen, met aantal.
+function medicijn_toonLegenda(root, gevonden) {
+    root.querySelectorAll('.' + MEDICIJN_LEGENDA_CLASS).forEach((n) => n.remove());
+    const groepen = Object.values(gevonden);
+    if (!groepen.length) return;
+    const legenda = document.createElement('div');
+    legenda.className = MEDICIJN_LEGENDA_CLASS;
+    legenda.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px 0;font-size:12px;';
+    groepen.forEach(({ groep, aantal }) => {
+        const chip = document.createElement('span');
+        chip.textContent = `${groep.naam} (${aantal})`;
+        chip.style.cssText = `background:${groep.kleur};border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:1px 8px;color:#333;`;
+        legenda.appendChild(chip);
+    });
+    const eerste = root.querySelector('.rapport44-recept');
+    if (eerste && eerste.parentElement) eerste.parentElement.insertBefore(legenda, eerste);
 }
 
 function medicijn_markeringen() {
@@ -1463,6 +1446,11 @@ function medicijn_markeringen() {
         console.log(`Found ${recepten.length} recepten to process`);
         if (!recepten.length) return;
 
+        const groepen = medicijn_groepenUitOpties(options)
+            .filter((g) => g.aan !== false && Array.isArray(g.woorden) && g.woorden.length)
+            .map((g) => Object.assign({}, g, { woordenNorm: g.woorden.map(medicijn_normalize).filter(Boolean) }));
+        const gevonden = {};
+
         recepten.forEach((recept) => {
             const receptRegels = recept.querySelectorAll('.rapport44-recept-regel');
             receptRegels.forEach((receptRegel) => {
@@ -1474,14 +1462,16 @@ function medicijn_markeringen() {
                 const medicijnNaam = medicijnDiv.textContent.trim();
                 const naamNorm = medicijn_normalize(medicijnNaam);
 
-                for (const cat of MEDICIJN_CATEGORIES) {
-                    const hit = cat.keywords.some((kw) => naamNorm.includes(medicijn_normalize(kw)));
-                    if (!hit) continue;
-                    console.log(`${cat.id} gevonden: ${medicijnNaam}`);
-                    receptRegel.style.backgroundColor = cat.color;
-                    receptRegel.classList.add(cat.className);
-                    receptRegel.setAttribute(MEDICIJN_MARK_ATTR, cat.id);
-                    break; // één categorie per regel (opiaat > benzo > …)
+                for (const groep of groepen) {
+                    if (!groep.woordenNorm.some((w) => naamNorm.includes(w))) continue;
+                    console.log(`${groep.id} gevonden: ${medicijnNaam}`);
+                    receptRegel.style.backgroundColor = groep.kleur;
+                    receptRegel.classList.add('medicijn-' + groep.id);
+                    receptRegel.setAttribute(MEDICIJN_MARK_ATTR, groep.id);
+                    receptRegel.__biGroep = groep;
+                    gevonden[groep.id] = gevonden[groep.id] || { groep, aantal: 0 };
+                    gevonden[groep.id].aantal++;
+                    break; // één groep per regel: de eerste in de lijst wint
                 }
 
                 // "1 herhalingen" accent (exacte tekst zoals Bricks toont)
@@ -1493,7 +1483,141 @@ function medicijn_markeringen() {
                 }
             });
         });
+        medicijn_toonLegenda(root, gevonden);
+        if (options.medicijnLabwaarden !== false) {
+            medicijn_toonLabwaarden(recepten).catch((e) => console.warn('Labwaarden in autorisatie mislukt', e));
+        }
     });
+}
+
+// --- Recente labwaarden achter het medicijn (bv. eGFR bij een DOAC) -----------------------------
+// patientId per recept komt uit de bridge (GetReceptRegels); de uitslagen met één call per patiënt
+// via LabBepalingMeting.GetUitslagenByWCIACodes (heeft toegang vanuit de autorisatie).
+
+const MEDICIJN_LAB_CACHE = new Map(); // patientId → Promise<{ key: { tekst, getal, datum, afwijkend, naam } }>
+
+function medicijn_rv(res) {
+    return res && res.ReturnValue !== undefined ? res.ReturnValue : res;
+}
+
+function medicijn_labVoorPatient(patientId) {
+    if (!MEDICIJN_LAB_CACHE.has(patientId)) {
+        MEDICIJN_LAB_CACHE.set(patientId, (async () => {
+            const codeKey = new Map();
+            Object.entries(MEDICIJN_LABWAARDEN).forEach(([key, def]) => def.codes.forEach((c) => codeKey.set(c, key)));
+            const groepen = medicijn_rv(await window.bricksBridge.doApi(
+                'LabBepalingMeting', 'GetUitslagenByWCIACodes', { patientId, codes: [...codeKey.keys()] }, true)) || [];
+            const nieuwste = {};
+            groepen.forEach((g) => (g.Uitslagen || []).forEach((u) => {
+                const key = codeKey.get(u.Memo) || codeKey.get(g.MetingType && g.MetingType.WCIAMemo);
+                const datum = new Date(u.Datum);
+                if (!key || isNaN(datum) || !u.WaardeDisplay) return;
+                if (nieuwste[key] && nieuwste[key].datum >= datum) return;
+                nieuwste[key] = {
+                    tekst: u.WaardeDisplay + (u.MetingEenheid ? ' ' + u.MetingEenheid : ''),
+                    getal: parseFloat(String(u.WaardeDisplay).replace(/[<>\s]/g, '').replace(',', '.')),
+                    datum,
+                    afwijkend: !!u.Afwijkend,
+                    naam: u.MetingOmschrijving || (g.MetingType && g.MetingType.Naam) || ''
+                };
+            }));
+            return nieuwste;
+        })().catch((e) => {
+            MEDICIJN_LAB_CACHE.delete(patientId);
+            throw e;
+        }));
+    }
+    return MEDICIJN_LAB_CACHE.get(patientId);
+}
+
+function medicijn_maandJaar(d) {
+    return String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear();
+}
+
+// Labwaarden die bij deze regel horen (groep.labAlleen: alleen bij bepaalde middelen, bv. DOAC's).
+function medicijn_labKeysVoorRegel(rr) {
+    const g = rr.__biGroep;
+    if (!g || !(g.lab || []).length) return [];
+    if (Array.isArray(g.labAlleen) && g.labAlleen.length) {
+        const naamEl = medicijn_findNameEl(rr);
+        const naam = medicijn_normalize(naamEl ? naamEl.textContent : '');
+        if (!g.labAlleen.some((w) => naam.includes(medicijn_normalize(w)))) return [];
+    }
+    return g.lab;
+}
+
+// 'rood' | 'oranje' | '' — eGFR op eigen grenzen (rood < 30; bij DOAC oranje < 50), de rest op de
+// labvlag. Onbekend of ouder dan een jaar is altijd minstens oranje.
+function medicijn_labNiveau(key, w, groep) {
+    if (!w) return 'oranje';
+    const oud = (Date.now() - w.datum.getTime()) > 365 * 86400000;
+    let niveau = '';
+    if (key === 'egfr' && !isNaN(w.getal)) {
+        if (w.getal < 30) niveau = 'rood';
+        else if (groep.egfrOranjeOnder && w.getal < groep.egfrOranjeOnder) niveau = 'oranje';
+    } else if (w.afwijkend) {
+        niveau = 'oranje';
+    }
+    return niveau || (oud ? 'oranje' : '');
+}
+
+async function medicijn_toonLabwaarden(receptenDom) {
+    const nodig = Array.from(receptenDom).some((r) =>
+        Array.from(r.querySelectorAll('.rapport44-recept-regel')).some((rr) => medicijn_labKeysVoorRegel(rr).length));
+    if (!nodig || !window.bricksBridge) return;
+    const lijst = await window.bricksBridge.autorisatieRecepten();
+    if (!Array.isArray(lijst) || !lijst.length) return;
+
+    for (let i = 0; i < receptenDom.length; i++) {
+        const recept = receptenDom[i];
+        // Zelfde volgorde als de API; voor de zekerheid de naam controleren.
+        const naamEl = recept.querySelector('[title="Open dossier"]');
+        const naam = naamEl ? naamEl.textContent.trim() : '';
+        let patientId = lijst[i] && lijst[i].patient.trim() === naam ? lijst[i].patientId : null;
+        if (!patientId) {
+            const kandidaten = [...new Set(lijst.filter((x) => x.patient.trim() === naam).map((x) => x.patientId))];
+            if (kandidaten.length === 1) patientId = kandidaten[0];
+        }
+        if (!(patientId > 0)) continue;
+
+        const regels = Array.from(recept.querySelectorAll('.rapport44-recept-regel'))
+            .filter((rr) => medicijn_labKeysVoorRegel(rr).length);
+        if (!regels.length) continue;
+        let labs;
+        try {
+            labs = await medicijn_labVoorPatient(patientId);
+        } catch (e) {
+            continue;
+        }
+        regels.forEach((rr) => {
+            rr.querySelectorAll('.bi-med-lab').forEach((n) => n.remove());
+            const naamMed = medicijn_findNameEl(rr);
+            if (!naamMed) return;
+            const houder = document.createElement('span');
+            houder.className = 'bi-med-lab';
+            houder.style.cssText = 'display:inline-flex;gap:4px;margin-left:8px;vertical-align:middle;';
+            medicijn_labKeysVoorRegel(rr).forEach((key) => {
+                const def = MEDICIJN_LABWAARDEN[key];
+                const w = labs[key];
+                const chip = document.createElement('span');
+                const oud = w && (Date.now() - w.datum.getTime()) > 365 * 86400000;
+                chip.textContent = w ? `${def.label} ${w.tekst} · ${medicijn_maandJaar(w.datum)}` : `${def.label} onbekend`;
+                chip.title = w ? `${w.naam}: ${w.tekst} op ${w.datum.toLocaleDateString('nl-NL')}`
+                    + (w.afwijkend ? ' (afwijkend volgens lab)' : '') + (oud ? ' — ouder dan een jaar' : '')
+                    : `Geen ${def.label} gevonden in de metingen van deze patiënt`;
+                const niveau = medicijn_labNiveau(key, w, rr.__biGroep);
+                chip.style.cssText = 'font-size:11px;padding:0 6px;border-radius:8px;white-space:nowrap;'
+                    + (niveau === 'rood' ? 'background:#fff0f0;border:1px solid #fc8181;color:#c53030;font-weight:600;'
+                        : niveau === 'oranje' ? 'background:#fff4e5;border:1px solid #f6ad55;color:#9c4221;'
+                            : 'background:#fff;border:1px solid #cbd5e0;color:#4a5568;');
+                houder.appendChild(chip);
+            });
+            // Binnen de naam: de regel is een (sub)grid, een extra kind zou alle cellen laten verschuiven.
+            // Klik op een labeltje mag de voorschrijfgeschiedenis (klik op de naam) niet openen.
+            houder.addEventListener('click', (e) => e.stopPropagation());
+            naamMed.appendChild(houder);
+        });
+    }
 }
 
 function medicijn_scheduleMarkeringen(delayMs) {

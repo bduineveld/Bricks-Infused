@@ -16,3 +16,10 @@
 ## Postverwerking — nog te bouwen
 
 - [ ] Geadresseerde (adresboek) voorstellen — wacht op uitleg over het adresboek.
+
+## Medicatie-autorisatie
+
+- [ ] Labwaarden achter medicatie live testen (gebouwd: eGFR/Hb bij bloedverdunners, HbA1c/eGFR bij
+      antidiabetica, K/eGFR bij bloeddruk, LDL, TSH, eGFR/ALAT bij hoogrisico).
+- [ ] Eigen medicatiegroepen ook labwaarden laten kiezen.
+- [ ] Medicatiegroepen live testen in de autorisatielijst (kleuren, voorrang, legenda).

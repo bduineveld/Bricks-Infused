@@ -24,7 +24,9 @@
     hisRegieWrapped: false,
     mapHooked: false,
     layoutResizeExecute: null,
-    eventTrigger: null
+    eventTrigger: null,
+    // Autorisatielijst: patiënt per recept uit HisRapport44.GetReceptRegels (alleen id + naam).
+    autorisatieRecepten: []
   };
 
   function log() {
@@ -88,10 +90,32 @@
     state.hisRegieWrapped = true;
   }
 
+  // Kijkt mee met Bricks' eigen API-calls. De autorisatielijst toont per recept wel de naam
+  // maar niet de patientId; die zit alleen in het antwoord van GetReceptRegels.
+  function wrapDoApi(B) {
+    if (!B || typeof B.doApi !== 'function' || B.doApi.__biWrapped) return;
+    const orig = B.doApi;
+    const wrapped = function (service, method, params) {
+      const res = orig.apply(this, arguments);
+      if (service === 'HisRapport44' && method === 'GetReceptRegels') {
+        Promise.resolve(res).then((r) => {
+          const rv = r && r.ReturnValue;
+          if (Array.isArray(rv)) {
+            state.autorisatieRecepten = rv.map((x) => ({ patientId: x.PatientId, patient: String(x.Patient || '') }));
+          }
+        }).catch(() => { /* Bricks toont zelf de fout */ });
+      }
+      return res;
+    };
+    wrapped.__biWrapped = true;
+    B.doApi = wrapped;
+  }
+
   function captureB(candidate) {
     if (!candidate || typeof candidate.doApi !== 'function') return false;
     state.B = candidate;
     wrapHisRegieTracking(candidate);
+    wrapDoApi(candidate);
     return true;
   }
 
@@ -454,6 +478,8 @@
         return navigate(args.to);
       case 'doApi':
         return doApi(args.service, args.method, args.params, args.ignoreBusy);
+      case 'autorisatieRecepten':
+        return state.autorisatieRecepten;
       case 'toggleLayoutResize':
         return toggleLayoutResize();
       case 'startZorgdomeinVerwijzing':

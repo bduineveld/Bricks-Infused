@@ -494,6 +494,91 @@
     }
 
     /* Ingeklapte sectie telt niet mee in de tussenruimte van de lijst. */
+    .mg-standaard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 4px 12px;
+    }
+
+    .mg-standaard {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #4a5568;
+      cursor: pointer;
+      padding: 3px 0;
+    }
+
+    .mg-std-lab {
+      font-size: 11px;
+      color: #a0aec0;
+    }
+
+    .mg-kleurvlak {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      flex: 0 0 14px;
+    }
+
+    .medicijn-groep {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+    }
+
+    .medicijn-groep-kop {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .medicijn-groep-kop input[type="text"] {
+      flex: 1;
+      padding: 4px 8px;
+      border: 1px solid #cbd5e0;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .medicijn-groep-kop input[type="color"] {
+      width: 30px;
+      height: 26px;
+      padding: 0;
+      border: 1px solid #cbd5e0;
+      border-radius: 4px;
+      background: none;
+      cursor: pointer;
+    }
+
+    .medicijn-groep-kop button {
+      border: 1px solid #e2e8f0;
+      background: #f7fafc;
+      border-radius: 4px;
+      width: 26px;
+      height: 26px;
+      cursor: pointer;
+      color: #4a5568;
+    }
+
+    .medicijn-groep textarea {
+      width: 100%;
+      margin-top: 6px;
+      padding: 6px 8px;
+      border: 1px solid #cbd5e0;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: inherit;
+      color: #4a5568;
+      resize: vertical;
+      min-height: 38px;
+    }
+
     .checkbox-group > .expandable-section.collapsed {
       margin-top: -10px;
     }
@@ -572,10 +657,35 @@
               <input type="checkbox" id="opt-resizer">
               <label for="opt-resizer">Widgets in het journaal herschalen<span class="desc">Klik op het grijze tussenstuk in het journaal om de widget-grootte aan te passen (layout-resize van Bricks).</span></label>
             </div>
-            <div class="checkbox-item">
+            <div class="checkbox-item has-expandable" id="medicijn-settings-item">
               <span class="opt-icon rood"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3.5a5 5 0 0 1 7.07 7.07l-7.07 7.07a5 5 0 0 1-7.07-7.07z"/><path d="M7 7l7 7"/></svg></span>
               <input type="checkbox" id="opt-medicijn">
-              <label for="opt-medicijn">Opiaten en benzo's markeren<span class="desc">Arceert opiaten en benzodiazepinen in de autorisatielijst van de medicatie.</span></label>
+              <label for="opt-medicijn">Medicatie markeren in de autorisatielijst<span class="desc">Kleurt medicatie per groep: opiaten, benzo's, bloedverdunners, antidiabetica e.a. Uitklappen om groepen aan te passen.</span></label>
+              <button type="button" class="expand-toggle collapsed" data-target="medicijn-section" aria-label="Meer instellingen"></button>
+            </div>
+
+            <div class="expandable-section collapsed" id="medicijn-section">
+              <div style="background: #f7fafc; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #c53030;">
+                <label style="display: flex; align-items: center; gap: 8px; margin: 0 0 14px 0; color: #4a5568; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" id="opt-medicijn-lab">
+                  Toon recente labwaarden achter het medicijn (bv. eGFR bij DOAC's). Rood = eGFR &lt; 30; oranje = eGFR &lt; 50 bij een
+                  DOAC, afwijkend volgens het lab, ouder dan een jaar of onbekend
+                </label>
+                <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 14px; font-weight: 600;">Standaardgroepen</p>
+                <div id="medicijn-standaard-lijst" class="mg-standaard-grid"></div>
+                <label for="medicijn-hoogrisico" style="display: block; margin: 12px 0 4px 0; color: #4a5568; font-size: 13px;">
+                  Hoogrisicomedicatie <span style="color: #a0aec0;">— welke middelen? (gescheiden door komma's)</span>
+                </label>
+                <input type="text" id="medicijn-hoogrisico" style="width: 100%; padding: 6px 8px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 13px;">
+
+                <p style="margin: 18px 0 4px 0; color: #4a5568; font-size: 14px; font-weight: 600;">Eigen groepen</p>
+                <p style="margin: 0 0 8px 0; color: #718096; font-size: 12px; line-height: 1.5;">
+                  Eigen groepen gaan vóór de standaardgroepen: een regel krijgt de kleur van de eerste groep die past.
+                  Woorden mogen een deel van de medicijnnaam zijn (hoofdletters en accenten maken niet uit).
+                </p>
+                <div id="medicijn-eigen-lijst"></div>
+                <button type="button" id="medicijn-groep-toevoegen" class="btn btn-secondary btn-small">Eigen groep toevoegen</button>
+              </div>
             </div>
             <div class="checkbox-item has-expandable" id="uprevent-settings-item">
               <span class="opt-icon rood"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg></span>
@@ -708,7 +818,7 @@
             <div class="expandable-header">
               <span style="display: flex; align-items: center; gap: 12px;"><span class="opt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9a4 4 0 0 1 0 9z"/><path d="M12 12v5"/><path d="M9.5 14.5L12 12l2.5 2.5"/></svg></span>
               <h3 style="margin: 0; font-size: 1em; font-weight: 500; color: #4a5568;">Instellingen in- en exporteren <span
-                  style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(komt binnenkort)</span></h3>
+                  style="color: #a0aec0; font-size: 0.9em; font-weight: normal;">(Bricks moet in een tabblad open staan)</span></h3>
               </span>
               <button type="button" class="expand-toggle collapsed" data-target="import-export-section"></button>
             </div>
@@ -745,6 +855,7 @@
     </div>
   </div>
 
+  <script src="medicijn_groepen.js"></script>
   <script src="options.js"></script>
 </body>
 

@@ -140,6 +140,85 @@ function collectPostverwerkingOpties() {
   return { postTypenUit, postWeglaten, postKopjes };
 }
 
+// --- Medicatiegroepen (autorisatielijst) -----------------------------------------------------
+// Standaardgroepen (medicijn_groepen.js): alleen aan/uit; bij Hoogrisicomedicatie ook de woorden.
+// Eigen groepen: naam, kleur en woorden vrij. Zie medicijn_groepenUitOpties voor de opslag.
+
+function renderMedicijnGroepen(data) {
+  const uit = data.medicijnGroepenUit || [];
+  const std = document.getElementById('medicijn-standaard-lijst');
+  std.innerHTML = '';
+  MEDICIJN_STANDAARD_GROEPEN.forEach((g) => {
+    const l = document.createElement('label');
+    l.className = 'mg-standaard';
+    l.innerHTML = '<input type="checkbox" class="mg-std-aan"><span class="mg-kleurvlak"></span><span class="mg-std-naam"></span>';
+    l.querySelector('input').dataset.id = g.id;
+    l.querySelector('input').checked = !uit.includes(g.id);
+    l.querySelector('.mg-kleurvlak').style.background = g.kleur;
+    l.querySelector('.mg-std-naam').textContent = g.naam;
+    if ((g.lab || []).length) {
+      const lab = document.createElement('span');
+      lab.className = 'mg-std-lab';
+      lab.textContent = g.lab.map((k) => MEDICIJN_LABWAARDEN[k].label).join(', ') + (g.labAlleen ? " (DOAC's)" : '');
+      l.appendChild(lab);
+    }
+    std.appendChild(l);
+  });
+
+  const hoog = MEDICIJN_STANDAARD_GROEPEN.find((g) => g.bewerkbaar);
+  const hoogVeld = document.getElementById('medicijn-hoogrisico');
+  hoogVeld.value = (Array.isArray(data.medicijnHoogrisico) ? data.medicijnHoogrisico : hoog.woorden).join(', ');
+  hoogVeld.dataset.standaard = hoog.woorden.join(', ');
+
+  const eigen = document.getElementById('medicijn-eigen-lijst');
+  eigen.innerHTML = '';
+  (data.medicijnEigenGroepen || []).forEach((g) => eigen.appendChild(maakEigenGroepRij(g)));
+}
+
+function maakEigenGroepRij(g) {
+  const rij = document.createElement('div');
+  rij.className = 'medicijn-groep';
+  rij.dataset.id = g.id;
+  const kop = document.createElement('div');
+  kop.className = 'medicijn-groep-kop';
+  kop.innerHTML = '<input type="checkbox" class="mg-aan" title="Groep aan/uit">'
+    + '<input type="color" class="mg-kleur" title="Kleur">'
+    + '<input type="text" class="mg-naam" placeholder="Naam van de groep">'
+    + '<button type="button" class="mg-weg" title="Groep verwijderen">✕</button>';
+  kop.querySelector('.mg-aan').checked = g.aan !== false;
+  kop.querySelector('.mg-kleur').value = g.kleur || '#fde68a';
+  kop.querySelector('.mg-naam').value = g.naam || '';
+  const woorden = document.createElement('textarea');
+  woorden.className = 'mg-woorden';
+  woorden.rows = 2;
+  woorden.placeholder = 'medicijnnamen, gescheiden door komma\'s';
+  woorden.value = (g.woorden || []).join(', ');
+  kop.querySelector('.mg-weg').addEventListener('click', () => {
+    if (confirm('Groep "' + (kop.querySelector('.mg-naam').value || 'zonder naam') + '" verwijderen?')) rij.remove();
+  });
+  rij.appendChild(kop);
+  rij.appendChild(woorden);
+  return rij;
+}
+
+function collectMedicijnGroepen() {
+  const lijst = (tekst) => tekst.split(',').map((w) => w.trim()).filter(Boolean);
+  const medicijnGroepenUit = Array.from(document.querySelectorAll('.mg-std-aan'))
+    .filter((cb) => !cb.checked).map((cb) => cb.dataset.id);
+  const hoogVeld = document.getElementById('medicijn-hoogrisico');
+  const hoog = lijst(hoogVeld.value);
+  // Gelijk aan de standaard = null, zodat latere uitbreidingen van de standaard doorkomen.
+  const medicijnHoogrisico = hoog.join(', ') === hoogVeld.dataset.standaard ? null : hoog;
+  const medicijnEigenGroepen = Array.from(document.querySelectorAll('#medicijn-eigen-lijst .medicijn-groep')).map((rij) => ({
+    id: rij.dataset.id,
+    naam: rij.querySelector('.mg-naam').value.trim() || 'Eigen groep',
+    kleur: rij.querySelector('.mg-kleur').value,
+    aan: rij.querySelector('.mg-aan').checked,
+    woorden: lijst(rij.querySelector('.mg-woorden').value)
+  })).filter((g) => g.woorden.length || g.naam !== 'Eigen groep');
+  return { medicijnGroepenUit, medicijnHoogrisico, medicijnEigenGroepen };
+}
+
 function setStorage(data, cb) {
   if (chrome && chrome.storage && chrome.storage.sync) {
     chrome.storage.sync.set(data, cb);
@@ -520,6 +599,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('opt-postverwerking-lab').checked = data.postverwerkingLab !== false;
     document.getElementById('opt-postverwerking-brief').checked = data.postverwerkingBrief !== false;
     renderPostverwerkingOpties(data);
+    renderMedicijnGroepen(data);
+    document.getElementById('opt-medicijn-lab').checked = data.medicijnLabwaarden !== false;
     document.getElementById('opt-zorgdomein').checked = data.zorgdomeinSnelkoppelingen !== false;
     // Alleen renderen als er data bestaat
     if (data.btnLabels && data.btnLabels.length > 0) {
@@ -544,10 +625,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const zorgdomeinSnelkoppelingen = document.getElementById('opt-zorgdomein').checked;
     const btnLabels = collectBtnLabels();
     const { postTypenUit, postWeglaten, postKopjes } = collectPostverwerkingOpties();
-    setStorage({ postTypenUit, postWeglaten, postKopjes, klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, postverwerkingLab, postverwerkingBrief, zorgdomeinSnelkoppelingen, btnLabels }, () => {
+    const { medicijnGroepenUit, medicijnHoogrisico, medicijnEigenGroepen } = collectMedicijnGroepen();
+    const medicijnLabwaarden = document.getElementById('opt-medicijn-lab').checked;
+    setStorage({ postTypenUit, postWeglaten, postKopjes, medicijnLabwaarden, medicijnGroepenUit, medicijnHoogrisico, medicijnEigenGroepen, klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, postverwerkingLab, postverwerkingBrief, zorgdomeinSnelkoppelingen, btnLabels }, () => {
       document.getElementById('status').textContent = 'Opgeslagen!';
       setTimeout(() => document.getElementById('status').textContent = '', 1500);
     });
+  });
+
+  document.getElementById('medicijn-groep-toevoegen').addEventListener('click', () => {
+    const rij = maakEigenGroepRij({ id: 'eigen-' + Date.now().toString(36), naam: '', kleur: '#fde68a', aan: true, woorden: [] });
+    document.getElementById('medicijn-eigen-lijst').appendChild(rij);
+    rij.querySelector('.mg-naam').focus();
   });
 
   document.getElementById('addBtnLabel').addEventListener('click', () => {
