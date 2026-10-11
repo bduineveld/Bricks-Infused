@@ -497,7 +497,10 @@ function pv_analyseer(bericht, episodes) {
             // Nieuwe episode alleen voorstellen als er geen bestaande past.
             nieuw: match ? [] : (bericht.icpc || []),
             heeftPatient: episodes.length > 0,
-            geboortedatum: bericht.geboortedatum
+            geboortedatum: bericht.geboortedatum,
+            afzender: bericht.afzender,
+            adresboek: bericht.adresboek,
+            opgeslagenContactId: bericht.opgeslagenContactId
         };
     }
     const codes = episodes.map((e) => e.code.toUpperCase());
@@ -579,6 +582,87 @@ function pv_patientGeboortedatum(pane) {
     return m ? m[1] : null;
 }
 
+// --- Geadresseerde (adresboek) -------------------------------------------------------------------
+// Eén duidelijke match en het veld is leeg → automatisch invullen (één keer per bericht).
+// Meerdere kandidaten → knoppen; niets gevonden → melding. Zie content_postverwerking_adresboek.js.
+
+const pv_adresboekPogingen = new Map(); // berichtId → aantal automatische pogingen (klaar = 99)
+
+// Mag Infused het huidige adresboekcontact vervangen? Ja als het leeg is, of als het Bricks' eigen
+// suggestie van alleen de instelling is (bv. "Dagoziekenhuis") die nog niet is opgeslagen.
+function pv_adresboekVervangbaar(pane, analyse) {
+    const huidig = pv_adresboekHuidig(pane);
+    if (!huidig) return true;
+    const inst = analyse.afzender && analyse.afzender.instelling;
+    return !(analyse.opgeslagenContactId > 0) && !!inst && pv_norm(huidig) === pv_norm(inst.naam);
+}
+
+function pv_nieuwContactKnop(afzender) {
+    const b = pv_knop('Nieuw contact aanmaken', false);
+    b.title = 'Opent het venster van Bricks met de afzender alvast ingevuld; controleer en sla zelf op.';
+    b.addEventListener('click', async () => {
+        if (!(await pv_nieuwContact(afzender))) {
+            b.title = 'Lukte niet — maak het contact zelf aan via het vergrootglas → Nieuw.';
+            b.style.borderColor = '#c53030';
+        }
+    });
+    return b;
+}
+
+function pv_toonAdresboekRegel(kaart, pane, analyse) {
+    const regel = document.createElement('div');
+    regel.className = 'bi-pv-adresboek';
+    regel.style.cssText = 'margin-top:4px;color:#444;';
+    kaart.appendChild(regel);
+    const ab = analyse.adresboek || { kandidaten: [] };
+    const huidig = pv_adresboekHuidig(pane);
+    const beste = pv_adresboekBeste(ab.kandidaten);
+    const vervangbaar = pv_adresboekVervangbaar(pane, analyse);
+    if (huidig && (!vervangbaar || (beste && pv_norm(huidig) === pv_norm(beste.naam)))) {
+        regel.textContent = `Geadresseerde: ${huidig}` + (beste && pv_norm(huidig) !== pv_norm(beste.naam) ? ` (afzender in brief: ${analyse.afzender.tekst})` : '');
+        return;
+    }
+    if (!ab.kandidaten.length) {
+        regel.textContent = `"${analyse.afzender.tekst}" staat niet in het adresboek` + (huidig ? ` (nu: ${huidig}). ` : '. ');
+        regel.appendChild(pv_nieuwContactKnop(analyse.afzender));
+        return;
+    }
+    regel.textContent = beste ? 'Geadresseerde:' : `Meerdere contacten passen bij "${analyse.afzender.tekst}":`;
+    (beste ? [beste] : ab.kandidaten.slice(0, 4)).forEach((k) => {
+        const b = pv_knop(k.naam, !!beste);
+        b.title = 'Kies dit contact in het adresboekveld (via het venster van Bricks).';
+        b.addEventListener('click', async () => {
+            b.disabled = true;
+            const ok = await pv_kiesAdresboek(ab.query, k, false);
+            b.disabled = false;
+            if (ok) b.textContent = '✓ ' + k.naam;
+            else { b.title = 'Lukte niet — kies het contact zelf via het vergrootglas.'; b.style.borderColor = '#c53030'; }
+        });
+        regel.appendChild(b);
+    });
+}
+
+async function pv_adresboekAutomatisch(analyse) {
+    const pogingen = pv_adresboekPogingen.get(analyse.berichtId) || 0;
+    if (!analyse.afzender || pogingen >= 2) return;
+    const beste = pv_adresboekBeste((analyse.adresboek || {}).kandidaten || []);
+    if (!beste) return;
+    // Bricks bouwt het paneel na het koppelen van een patiënt opnieuw op; even laten bijkomen.
+    await new Promise((r) => setTimeout(r, 800));
+    const pane = document.querySelector('.koppelinfo.vertical-view');
+    if (!pane || pv_berichtIdUitUrl() !== analyse.berichtId || !pv_adresboekVervangbaar(pane, analyse)) return;
+    if (pv_norm(pv_adresboekHuidig(pane)) === pv_norm(beste.naam)) return;
+    pv_adresboekPogingen.set(analyse.berichtId, pogingen + 1);
+    const ok = await pv_kiesAdresboek(analyse.adresboek.query, beste, true);
+    if (ok) pv_adresboekPogingen.set(analyse.berichtId, 99);
+    const paneNu = document.querySelector('.koppelinfo.vertical-view');
+    const regel = paneNu && paneNu.querySelector('.' + PV_CARD_CLASS + ' .bi-pv-adresboek');
+    if (regel) {
+        regel.textContent = ok ? `✓ Geadresseerde ingevuld: ${beste.naam} (herkend uit "${analyse.afzender.tekst}"; controleer en sla op)`
+            : `Geadresseerde "${beste.naam}" kon niet automatisch worden ingevuld; kies via het vergrootglas.`;
+    }
+}
+
 // --- Kaart -----------------------------------------------------------------------------
 
 function pv_knop(tekst, primair) {
@@ -623,6 +707,8 @@ function pv_toonKaart(pane, analyse) {
         waarsch.style.cssText = 'margin-top:4px;padding:4px 6px;background:#fff5f5;border:1px solid #feb2b2;border-radius:4px;color:#c53030;';
         kaart.appendChild(waarsch);
     }
+
+    if (analyse.afzender) pv_toonAdresboekRegel(kaart, pane, analyse);
 
     const tekst = document.createElement('div');
     tekst.textContent = analyse.samenvatting || (analyse.titel === 'lab' ? 'Geen bepalingen herkend.' : 'Geen conclusie of beleid gevonden.');
@@ -691,11 +777,38 @@ function pv_toonKaart(pane, analyse) {
 
 // --- Aansturing ----------------------------------------------------------------------------
 
+function pv_berichtLaden(berichtId) {
+    if (!pv_berichtCache.has(berichtId)) {
+        pv_berichtCache.set(berichtId, bricksBridge.waitUntilReady().then(() => pv_leesBericht(berichtId)).catch((e) => {
+            console.warn('Postverwerking: bericht lezen mislukt', e);
+            return null;
+        }));
+    }
+    return pv_berichtCache.get(berichtId);
+}
+
 async function pv_check() {
     if (pv_bezig) return;
     const berichtId = pv_berichtIdUitUrl();
     const pane = document.querySelector('.koppelinfo.vertical-view');
-    if (!berichtId || !pane || !pane.querySelector('textarea.samenvatting')) return;
+    if (!berichtId || !pane) return;
+    // Nog geen patiënt gekozen: Bricks toont dan geen samenvatting (dus geen kaart), maar de
+    // geadresseerde staat los van de patiënt en kan al wel worden ingevuld.
+    if (!pane.querySelector('textarea.samenvatting')) {
+        if (pv_adresboekPogingen.get(berichtId) >= 2) return;
+        pv_bezig = true;
+        try {
+            const bericht = await pv_berichtLaden(berichtId);
+            if (bericht && bericht.soort === 'brief' && pv_berichtIdUitUrl() === berichtId) {
+                await pv_adresboekAutomatisch(Object.assign({ berichtId, opgeslagenContactId: bericht.opgeslagenContactId }, bericht));
+            }
+        } catch (e) {
+            console.warn('Postverwerking: adresboek invullen mislukt', e);
+        } finally {
+            pv_bezig = false;
+        }
+        return;
+    }
 
     // Opnieuw tekenen als bericht of episodelijst (= gekozen patiënt) verandert.
     const sleutel = berichtId + '|' + pv_leesEpisodes(pane).map((e) => e.code).join(',');
@@ -705,13 +818,7 @@ async function pv_check() {
 
     pv_bezig = true;
     try {
-        if (!pv_berichtCache.has(berichtId)) {
-            pv_berichtCache.set(berichtId, bricksBridge.waitUntilReady().then(() => pv_leesBericht(berichtId)).catch((e) => {
-                console.warn('Postverwerking: bericht lezen mislukt', e);
-                return null;
-            }));
-        }
-        const bericht = await pv_berichtCache.get(berichtId);
+        const bericht = await pv_berichtLaden(berichtId);
         // Intussen naar een ander bericht gegaan?
         if (pv_berichtIdUitUrl() !== berichtId) return;
         const paneNu = document.querySelector('.koppelinfo.vertical-view');
@@ -719,8 +826,12 @@ async function pv_check() {
         paneNu.querySelectorAll('.' + PV_CARD_CLASS).forEach((n) => n.remove());
         if (!bericht) return;
         const episodes = pv_leesEpisodes(paneNu);
-        const kaart = pv_toonKaart(paneNu, pv_analyseer(bericht, episodes));
+        const analyse = pv_analyseer(bericht, episodes);
+        const kaart = pv_toonKaart(paneNu, analyse);
         if (kaart) kaart.dataset.sleutel = berichtId + '|' + episodes.map((e) => e.code).join(',');
+        if (kaart && bericht.soort === 'brief') {
+            pv_adresboekAutomatisch(analyse).catch((e) => console.warn('Postverwerking: adresboek invullen mislukt', e));
+        }
     } finally {
         pv_bezig = false;
     }

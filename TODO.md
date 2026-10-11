@@ -7,7 +7,7 @@
 
 ## Postverwerking — nog te testen
 
-- [ ] "+ ICPC"-knop: opent en vult Bricks' eigen venster "Episode toevoegen" (brief zonder passende episode nodig).
+- [x] "+ ICPC"-knop: opent en vult Bricks' eigen venster "Episode toevoegen" (getest 11-10-2026 met R83.03 COVID-19).
 - [ ] Trend bij eGFR / HbA1c / glucose bij een patiënt met eerdere waarden.
 - [ ] Brieftypen met echte voorbeelden: radiologie, scopie, PA, kweek, HAP, GGZ, MDO, opname, meedenkadvies e.a.
 - [ ] "Overnemen" en de episodeknop in de kaart.
@@ -15,7 +15,10 @@
 
 ## Postverwerking — nog te bouwen
 
-- [ ] Geadresseerde (adresboek) voorstellen — wacht op uitleg over het adresboek.
+- [x] Geadresseerde (adresboek): afzender herkennen en automatisch invullen (R. Smit), onderscheid op specialisme
+      (twee K. Mulder), Bricks' instelling-suggestie vervangen door de specialist, nieuw contact voorstellen.
+- [ ] Nieuw contact (Dr. De Vries, Dagoziekenhuis) live testen, en daarna of Infused hem zelf vindt.
+- [ ] Geadresseerde invullen vóór het koppelen van de patiënt live testen.
 
 ## Medicatie-autorisatie
 

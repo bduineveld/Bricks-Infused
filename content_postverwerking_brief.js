@@ -102,7 +102,8 @@ function pv_sectie(regels, labels, opts) {
         labels = Array.from(new Set(labels.concat(pv_extraKopjes(groep)))).sort((a, b) => b.length - a.length);
     }
     const max = opts.max || 12;
-    const re = new RegExp('^(?:' + labels.map((l) => l.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|') + ')\\s*(?::\\s*(.*)|\\s*$)', 'i');
+    // Label gevolgd door ':' of '/' ("Conclusie/ tekst", "Beleid/"), of alleen op de regel.
+    const re = new RegExp('^(?:' + labels.map((l) => l.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|') + ')\\s*(?:[:/]\\s*(.*)|\\s*$)', 'i');
     let gevonden = null;
     for (let i = 0; i < regels.length; i++) {
         const m = regels[i].match(re);
@@ -444,11 +445,17 @@ async function pv_briefAnalyse(info) {
     const diagnoseTekst = (def.diagnose && def.diagnose(regels, t, ruw))
         || pv_eerste(regels, [['diagnose', 'werkdiagnose', 'conclusie', 'c/']], { max: 3, laatste: true })
         || '';
+    const afzender = pv_afzenderUitInfo(info) || pv_afzenderUitTekst(regels);
+    if (afzender) afzender.instelling = pv_instellingUitInfo(info);
     return {
         soort: 'brief',
         type: def.type,
         samenvatting,
         diagnoseTekst,
+        afzender,
+        adresboek: await pv_adresboekKandidaten(afzender),
+        // Wat Bricks al als adresboekcontact heeft OPGESLAGEN (>0); een niet-opgeslagen suggestie mag Infused vervangen.
+        opgeslagenContactId: info.TelefoonboekContactId,
         icpc: diagnoseTekst ? await pv_icpcSuggesties(diagnoseTekst) : [],
         geboortedatum: pv_geboortedatumUitTekst(ruw)
     };
