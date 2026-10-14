@@ -156,19 +156,11 @@ function pv_w(w) {
 // dit bericht; de lijst kan ook nieuwere uitslagen bevatten (oud bericht) en is niet op
 // volgorde te vertrouwen.
 
-const PV_TREND = { egfr: 0.05, hba1c: 0.05, glucose: 0.10, acr: 0.20 }; // drempel voor "stabiel"
+// Bepalingen waarvan de vorige waarde wordt opgehaald (alleen genoemd als de huidige afwijkt).
+const PV_TREND = { egfr: true, hba1c: true, glucose: true, acr: true };
 
 function pv_maandJaar(d) {
     return String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear();
-}
-
-// "; was 61 in 03-2023, gedaald" — leeg als er geen vorige waarde is.
-function pv_trend(w, drempel) {
-    const v = w && w.vorig;
-    if (!v || w.getal == null || v.getal == null || v.getal === 0) return '';
-    const rel = (w.getal - v.getal) / v.getal;
-    const richting = Math.abs(rel) < drempel ? 'stabiel' : (rel > 0 ? 'gestegen' : 'gedaald');
-    return `; was ${v.tekst} in ${pv_maandJaar(v.datum)}, ${richting}`;
 }
 
 function pv_afnameDatum(html, info) {
@@ -205,32 +197,52 @@ async function pv_koppelVorigeWaarden(waarden, patientId, afname) {
 }
 
 // --- Regels ------------------------------------------------------------------------
-// Elke regel pakt zijn bepalingen (gebruikt = true) en geeft 0..n zinnen terug.
+// Stijl (afgesproken 14-10-2026): patiënttaal, kort. Alleen AFWIJKINGEN met een getal (zonder eenheid),
+// de rest gebundeld zonder getallen:
+//   "Laag ferritine (18), past bij ijzertekort, geen bloedarmoede. Verder alles normaal (nierfunctie,
+//    bloedsuiker, cholesterol, schildklierwaarde, vitamines)."
+// Elke regel pakt zijn bepalingen (gebruikt = true) en geeft { afw: [...], norm: [...] } terug.
+
+function pv_r(afw, norm) {
+    return { afw: afw || [], norm: norm || [] };
+}
+
+// Getal zoals het lab het geeft ("18", "<0,01"), zonder eenheid.
+function pv_g(w) {
+    return w.waarde;
+}
+
+// ", was 61 in 03-2023" — alleen bij afwijkende waarden zinvol.
+function pv_was(w) {
+    const v = w && w.vorig;
+    return v && v.tekst ? `, was ${v.tekst} in ${pv_maandJaar(v.datum)}` : '';
+}
 
 function pv_regelSchildklier(waarden, ctx) {
     const tsh = pv_pak(waarden, 'tsh');
     const ft4 = pv_pak(waarden, 'ft4');
-    if (!tsh && !ft4) return [];
-    if (!tsh) return [`fT4 ${ft4.status} (${pv_w(ft4)}), TSH niet bepaald.`];
-
+    if (!tsh && !ft4) return pv_r();
+    if (!tsh) {
+        return ft4.status === 'normaal' ? pv_r([], ['schildklierwaarde'])
+            : pv_r([`${ft4.status === 'verhoogd' ? 'verhoogd' : 'verlaagd'} FT4 (${pv_g(ft4)}), TSH niet bepaald`]);
+    }
     const t = tsh.status;
     const f = ft4 ? ft4.status : null;
-    const waardes = `TSH ${pv_w(tsh)}` + (ft4 ? `, fT4 ${pv_w(ft4)}` : '');
+    const waardes = `TSH ${pv_g(tsh)}` + (ft4 ? `, FT4 ${f === 'normaal' ? 'normaal' : pv_g(ft4)}` : '');
 
     if (ctx.heeftT86) {
-        if (t === 'normaal') return [`Normale TSH (${waardes}): schildkliermedicatie goed ingesteld.`];
-        if (t === 'verhoogd' && (!ft4 || f === 'normaal' || f === 'verlaagd')) return [`TSH verhoogd (${waardes}): schildkliermedicatie te laag ingesteld.`];
-        if (t === 'verlaagd' && (!ft4 || f === 'normaal' || f === 'verhoogd')) return [`TSH verlaagd (${waardes}): schildkliermedicatie te hoog ingesteld.`];
-        return [`Afwijkende schildklierwaarden (${waardes}).`];
+        if (t === 'normaal') return pv_r([], ['schildklierwaarde (medicatie goed ingesteld)']);
+        if (t === 'verhoogd' && (!ft4 || f !== 'verhoogd')) return pv_r([`schildkliermedicatie te laag ingesteld (${waardes})`]);
+        if (t === 'verlaagd' && (!ft4 || f !== 'verlaagd')) return pv_r([`schildkliermedicatie te hoog ingesteld (${waardes})`]);
+        return pv_r([`afwijkende schildklierwaarden (${waardes})`]);
     }
-
-    if (t === 'normaal' && (!ft4 || f === 'normaal')) return [`Normale schildklierfunctie (${waardes}).`];
-    if (!ft4) return [`TSH ${t} (${waardes}), fT4 niet bepaald.`];
-    if (t === 'verlaagd' && f === 'normaal') return [`Subklinische hyperthyreoïdie (${waardes}).`];
-    if (t === 'verlaagd' && f === 'verhoogd') return [`Hyperthyreoïdie (${waardes}).`];
-    if (t === 'verhoogd' && f === 'normaal') return [`Subklinische hypothyreoïdie (${waardes}).`];
-    if (t === 'verhoogd' && f === 'verlaagd') return [`Hypothyreoïdie (${waardes}).`];
-    return [`Afwijkende schildklierwaarden (${waardes}).`];
+    if (t === 'normaal' && (!ft4 || f === 'normaal')) return pv_r([], ['schildklierwaarde']);
+    if (!ft4) return pv_r([`${t === 'verhoogd' ? 'verhoogd' : 'verlaagd'} TSH (${pv_g(tsh)}), FT4 niet bepaald`]);
+    if (t === 'verlaagd' && f === 'normaal') return pv_r([`licht te snel werkende schildklier (${waardes})`]);
+    if (t === 'verlaagd' && f === 'verhoogd') return pv_r([`te snel werkende schildklier (${waardes})`]);
+    if (t === 'verhoogd' && f === 'normaal') return pv_r([`licht te traag werkende schildklier (${waardes})`]);
+    if (t === 'verhoogd' && f === 'verlaagd') return pv_r([`te traag werkende schildklier (${waardes})`]);
+    return pv_r([`afwijkende schildklierwaarden (${waardes})`]);
 }
 
 function pv_regelNier(waarden) {
@@ -238,167 +250,159 @@ function pv_regelNier(waarden) {
     const acr = pv_pak(waarden, 'acr');
     const creat = pv_zoek(waarden, 'creatinine');
     if (egfr && creat) creat.gebruikt = true; // creatinine zegt niets extra naast eGFR
-    const zinnen = [];
+    const afw = [];
+    let normaal = false;
     if (egfr) {
         const g = egfr.getal != null ? egfr.getal : (/>\s*\d/.test(egfr.waarde) ? 90 : null);
-        const e = `eGFR ${egfr.waarde}${pv_trend(egfr, PV_TREND.egfr)}`;
-        if (g == null) zinnen.push(`${e}.`);
-        else if (g >= 60) zinnen.push(`Normale nierfunctie (${e}).`);
-        else if (g >= 45) zinnen.push(`Matig verminderde nierfunctie, G3a (${e}).`);
-        else if (g >= 30) zinnen.push(`Matig-ernstig verminderde nierfunctie, G3b (${e}).`);
-        else if (g >= 15) zinnen.push(`Ernstig verminderde nierfunctie, G4 (${e}).`);
-        else zinnen.push(`Nierfalen, G5 (${e}).`);
+        const e = `eGFR ${pv_g(egfr)}${pv_was(egfr)}`;
+        if (g == null) afw.push(e);
+        else if (g >= 60) normaal = true;
+        else if (g >= 45) afw.push(`licht verminderde nierfunctie (${e})`);
+        else if (g >= 30) afw.push(`matig verminderde nierfunctie (${e})`);
+        else if (g >= 15) afw.push(`ernstig verminderde nierfunctie (${e})`);
+        else afw.push(`zeer ernstig verminderde nierfunctie (${e})`);
         const v = egfr.vorig;
         if (v && g != null && v.getal && v.dagenGeleden <= 90 && (v.getal - g) / v.getal >= 0.15) {
-            zinnen.push(`Daling eGFR > 15% binnen 3 maanden (van ${v.tekst} naar ${egfr.waarde}).`);
+            afw.push(`nierfunctie meer dan 15% gedaald in 3 maanden (eGFR van ${v.tekst} naar ${pv_g(egfr)})`);
+            normaal = false;
         }
     }
     if (acr && acr.getal != null) {
-        const a = `ACR ${acr.waarde}${pv_trend(acr, PV_TREND.acr)}`;
-        if (acr.getal < 3) zinnen.push(`Geen albuminurie (${a}).`);
-        else if (acr.getal <= 30) zinnen.push(`Matig verhoogde albuminurie, A2 (${a}).`);
-        else zinnen.push(`Ernstig verhoogde albuminurie, A3 (${a}).`);
+        if (acr.getal < 3) normaal = normaal || !egfr;
+        else if (acr.getal <= 30) afw.push(`eiwit in de urine (ACR ${pv_g(acr)}${pv_was(acr)})`);
+        else afw.push(`veel eiwit in de urine (ACR ${pv_g(acr)}${pv_was(acr)})`);
     }
-    return zinnen;
+    return pv_r(afw, normaal && !afw.length ? ['nierfunctie'] : []);
 }
 
 function pv_regelElektrolyten(waarden) {
     const na = pv_pak(waarden, 'natrium');
     const k = pv_pak(waarden, 'kalium');
-    if (!na && !k) return [];
+    if (!na && !k) return pv_r();
     const afw = [];
-    if (na && na.status === 'verlaagd') afw.push(`hyponatriëmie (${pv_w(na)})`);
-    if (na && na.status === 'verhoogd') afw.push(`hypernatriëmie (${pv_w(na)})`);
-    if (k && k.status === 'verlaagd') afw.push(`hypokaliëmie (${pv_w(k)})`);
-    if (k && k.status === 'verhoogd') afw.push(`hyperkaliëmie (${pv_w(k)})`);
-    if (!afw.length) return ['Normale elektrolyten.'];
-    return [afw.join(', ').replace(/^./, (c) => c.toUpperCase()) + '.'];
+    if (na && na.status === 'verlaagd') afw.push(`laag natrium (${pv_g(na)})`);
+    if (na && na.status === 'verhoogd') afw.push(`hoog natrium (${pv_g(na)})`);
+    if (k && k.status === 'verlaagd') afw.push(`laag kalium (${pv_g(k)})`);
+    if (k && k.status === 'verhoogd') afw.push(`hoog kalium (${pv_g(k)})`);
+    return pv_r(afw, afw.length ? [] : ['zouten']);
 }
 
 function pv_regelGlucose(waarden, ctx) {
-    const zinnen = [];
+    const afw = [];
+    let normaal = false;
     const hba1c = pv_pak(waarden, 'hba1c');
     if (hba1c) {
-        const h = pv_w(hba1c) + pv_trend(hba1c, PV_TREND.hba1c);
-        if (ctx.heeftT90 || hba1c.getal == null) zinnen.push(`HbA1c ${h.includes(';') ? '(' + h + ')' : h}.`);
-        else if (hba1c.getal >= 48) zinnen.push(`Verhoogd HbA1c (${h}): past bij diabetes mellitus, bevestigen.`);
-        else zinnen.push(`Normaal HbA1c (${h}).`);
+        // Bij diabetes is het HbA1c de controlewaarde zelf: altijd noemen.
+        if (ctx.heeftT90 || hba1c.getal == null) afw.push(`HbA1c ${pv_g(hba1c)}${pv_was(hba1c)}`);
+        else if (hba1c.getal >= 48) afw.push(`verhoogd HbA1c (${pv_g(hba1c)}), past bij diabetes`);
+        else normaal = true;
     }
     const gluc = pv_pak(waarden, 'glucose');
     if (gluc && gluc.getal != null) {
         const nuchter = /nuchter/.test(gluc.sleutel) && !/niet nuchter/.test(gluc.sleutel);
         const g = gluc.getal;
-        const soort = nuchter ? 'nuchtere glucose' : 'glucose niet nuchter';
-        const gw = pv_w(gluc) + pv_trend(gluc, PV_TREND.glucose);
-        if (ctx.heeftT90) zinnen.push(`${soort.replace(/^./, (c) => c.toUpperCase())} ${gw.includes(';') ? '(' + gw + ')' : gw}.`);
-        else if (g < 4) zinnen.push(`Verlaagde glucose (${gw}).`);
-        else if (nuchter && g < 6.1) zinnen.push(`Normale nuchtere glucose (${gw}).`);
-        else if (nuchter && g < 7.0) zinnen.push(`Gestoorde nuchtere glucose (${gw}).`);
-        else if (nuchter) zinnen.push(`Verhoogde nuchtere glucose (${gw}): past bij diabetes mellitus, bevestigen.`);
-        else if (g < 7.8) zinnen.push(`Normale glucose niet nuchter (${gw}).`);
-        else if (g < 11.1) zinnen.push(`Verhoogde glucose niet nuchter (${gw}).`);
-        else zinnen.push(`Verhoogde glucose niet nuchter (${gw}): past bij diabetes mellitus, bevestigen.`);
+        const dm = ctx.heeftT90 ? '' : ', past bij diabetes';
+        const n = nuchter ? 'nuchtere ' : '';
+        if (g < 4) afw.push(`lage bloedsuiker (${pv_g(gluc)})`);
+        else if (nuchter && g < 6.1) normaal = true;
+        else if (nuchter && g < 7.0) afw.push(`licht verhoogde nuchtere bloedsuiker (${pv_g(gluc)})`);
+        else if (!nuchter && g < 7.8) normaal = true;
+        else if (!nuchter && g < 11.1) afw.push(`licht verhoogde bloedsuiker (${pv_g(gluc)})`);
+        else afw.push(`verhoogde ${n}bloedsuiker (${pv_g(gluc)})${dm}`);
     }
-    return zinnen;
+    return pv_r(afw, normaal ? ['bloedsuiker'] : []);
 }
 
 function pv_regelBloedbeeld(waarden) {
     const hb = pv_pak(waarden, 'hb');
     const mcv = pv_pak(waarden, 'mcv');
     const ferr = pv_pak(waarden, 'ferritine');
-    const zinnen = [];
+    const afw = [];
+    const norm = [];
+    const ferrLaag = ferr && (ferr.status === 'verlaagd' || (ferr.getal != null && ferr.getal < 30 && ferr.status !== 'verhoogd'));
+    let bloedarmoede = null;
     if (hb && hb.status === 'verlaagd') {
-        let soort = 'Anemie';
-        if (mcv && mcv.status === 'verlaagd') soort = 'Microcytaire anemie';
-        else if (mcv && mcv.status === 'verhoogd') soort = 'Macrocytaire anemie';
-        else if (mcv) soort = 'Normocytaire anemie';
-        zinnen.push(`${soort} (Hb ${pv_w(hb)}${mcv ? ', MCV ' + pv_w(mcv) : ''}).`);
-    } else if (hb && hb.status === 'verhoogd') {
-        zinnen.push(`Verhoogd Hb (${pv_w(hb)}).`);
-    } else if (hb) {
-        if (mcv && mcv.status !== 'normaal' && mcv.status !== 'onbekend') zinnen.push(`Geen anemie, MCV ${mcv.status} (${pv_w(mcv)}).`);
-        else zinnen.push('Geen anemie.');
-    } else if (mcv && mcv.status !== 'normaal') {
-        zinnen.push(`MCV ${mcv.status} (${pv_w(mcv)}).`);
+        const cellen = mcv && mcv.status === 'verlaagd' ? ' met kleine rode bloedcellen'
+            : mcv && mcv.status === 'verhoogd' ? ' met grote rode bloedcellen' : '';
+        bloedarmoede = `bloedarmoede (Hb ${pv_g(hb)})${cellen}`;
     }
-    if (ferr) {
-        if (ferr.status === 'verlaagd' || (ferr.getal != null && ferr.getal < 30 && ferr.status !== 'verhoogd')) zinnen.push(`Laag ferritine (${pv_w(ferr)}): past bij ijzergebrek.`);
-        else if (ferr.status === 'verhoogd') zinnen.push(`Verhoogd ferritine (${pv_w(ferr)}).`);
-        else zinnen.push(`Normaal ferritine (${pv_w(ferr)}).`);
+    if (ferrLaag) {
+        // "laag ferritine (18), past bij ijzertekort, geen bloedarmoede"
+        afw.push(`laag ferritine (${pv_g(ferr)}), past bij ijzertekort` + (bloedarmoede ? `, ${bloedarmoede}` : hb ? ', geen bloedarmoede' : ''));
+    } else {
+        if (bloedarmoede) afw.push(bloedarmoede);
+        if (hb && hb.status === 'verhoogd') afw.push(`verhoogd Hb (${pv_g(hb)})`);
+        if (hb && hb.status !== 'verlaagd' && hb.status !== 'verhoogd' && mcv && (mcv.status === 'verlaagd' || mcv.status === 'verhoogd')) {
+            afw.push(`${mcv.status === 'verlaagd' ? 'kleine' : 'grote'} rode bloedcellen (MCV ${pv_g(mcv)}), geen bloedarmoede`);
+        }
+        if (ferr && ferr.status === 'verhoogd') afw.push(`verhoogd ferritine (${pv_g(ferr)})`);
+        if (!afw.length && (hb || ferr)) norm.push('bloedbeeld');
     }
-    return zinnen;
+    return pv_r(afw, norm);
+}
+
+const PV_KORTE_NAAM = { crp: 'CRP', bse: 'BSE', leuko: 'leukocyten', asat: 'ASAT', alat: 'ALAT', ggt: 'GGT', af: 'AF' };
+
+function pv_regelGroep(waarden, sleutels, afwTekst, normLabel) {
+    const delen = sleutels.map((k) => ({ k, w: pv_pak(waarden, k) })).filter((d) => d.w);
+    if (!delen.length) return pv_r();
+    const afw = delen.filter((d) => d.w.status === 'verhoogd' || d.w.status === 'verlaagd');
+    if (!afw.length) return pv_r([], [normLabel]);
+    return pv_r([`${afwTekst} (${afw.map((d) => `${PV_KORTE_NAAM[d.k]} ${pv_g(d.w)}`).join(', ')})`]);
 }
 
 function pv_regelOntsteking(waarden) {
-    const delen = ['crp', 'bse', 'leuko'].map((s) => pv_pak(waarden, s)).filter(Boolean);
-    if (!delen.length) return [];
-    const afw = delen.filter((w) => w.status === 'verhoogd' || w.status === 'verlaagd');
-    if (!afw.length) return ['Normale ontstekingswaarden.'];
-    return [afw.map((w) => `${w.naam.replace(/\s*\(.*\)/, '')} ${w.status} (${pv_w(w)})`).join(', ').replace(/^./, (c) => c.toUpperCase()) + '.'];
+    return pv_regelGroep(waarden, ['crp', 'bse', 'leuko'], 'verhoogde ontstekingswaarden', 'ontstekingswaarden');
 }
 
 function pv_regelLever(waarden) {
-    const delen = ['asat', 'alat', 'ggt', 'af'].map((s) => pv_pak(waarden, s)).filter(Boolean);
-    if (!delen.length) return [];
-    const afw = delen.filter((w) => w.status === 'verhoogd' || w.status === 'verlaagd');
-    if (!afw.length) return ['Normale leverwaarden.'];
-    return [afw.map((w) => `${w.naam} ${w.status} (${pv_w(w)})`).join(', ').replace(/^./, (c) => c.toUpperCase()) + '.'];
+    return pv_regelGroep(waarden, ['asat', 'alat', 'ggt', 'af'], 'afwijkende leverwaarden', 'leverwaarden');
 }
 
 function pv_regelVitamines(waarden) {
-    const zinnen = [];
-    const normaal = [];
+    const afw = [];
+    let normaal = false;
     const b12 = pv_pak(waarden, 'b12');
-    if (b12) {
-        if (b12.status === 'verlaagd') zinnen.push(`Verlaagd vitamine B12 (${pv_w(b12)}).`);
-        else normaal.push('vitamine B12');
-    }
+    if (b12) { if (b12.status === 'verlaagd') afw.push(`laag vitamine B12 (${pv_g(b12)})`); else normaal = true; }
     const fol = pv_pak(waarden, 'folium');
-    if (fol) {
-        if (fol.status === 'verlaagd') zinnen.push(`Verlaagd foliumzuur (${pv_w(fol)}).`);
-        else normaal.push('foliumzuur');
-    }
+    if (fol) { if (fol.status === 'verlaagd') afw.push(`laag foliumzuur (${pv_g(fol)})`); else normaal = true; }
     const vitd = pv_pak(waarden, 'vitd');
     if (vitd) {
-        if ((vitd.getal != null && vitd.getal < 50) || vitd.status === 'verlaagd') zinnen.push(`Verlaagd vitamine D (${pv_w(vitd)}).`);
-        else normaal.push('vitamine D');
+        if ((vitd.getal != null && vitd.getal < 50) || vitd.status === 'verlaagd') afw.push(`laag vitamine D (${pv_g(vitd)})`);
+        else normaal = true;
     }
-    if (normaal.length) zinnen.push(`Normaal ${normaal.join(', ').replace(/, ([^,]*)$/, ' en $1')}.`);
-    return zinnen;
+    return pv_r(afw, normaal ? ['vitamines'] : []);
 }
 
 function pv_regelLdl(waarden, ctx) {
     const ldl = pv_pak(waarden, 'ldl');
-    if (!ldl) return [];
+    if (!ldl) return pv_r();
     if (ctx.cvrm === 'hvz' && ldl.getal != null) {
-        const op = ldl.getal < PV_LDL_STREEF.hvz.max ? 'op' : 'boven';
-        return [`LDL ${pv_w(ldl)}, ${op} streefwaarde (< 1,8 bij HVZ).`];
+        return ldl.getal < PV_LDL_STREEF.hvz.max ? pv_r([], ['cholesterol (op streefwaarde)'])
+            : pv_r([`LDL boven streefwaarde (${pv_g(ldl)}; streef < 1,8)`]);
     }
-    // Zonder HVZ hangt het oordeel af van o.a. statinegebruik: alleen de streefwaarde noemen.
-    if (ctx.cvrm === 'risico') return [`LDL ${pv_w(ldl)} (streefwaarde < 2,6 bij CVRM).`];
-    if (ldl.status === 'verhoogd') return [`Verhoogd LDL (${pv_w(ldl)}).`];
-    if (ldl.status === 'normaal') return [`Normaal LDL (${pv_w(ldl)}).`];
-    return [`LDL ${pv_w(ldl)}.`];
+    // Zonder HVZ hangt het oordeel af van o.a. statinegebruik: boven 2,6 alleen de streefwaarde noemen.
+    if (ctx.cvrm === 'risico' && ldl.getal != null) {
+        return ldl.getal <= PV_LDL_STREEF.risico.max ? pv_r([], ['cholesterol'])
+            : pv_r([`LDL ${pv_g(ldl)} (streefwaarde < 2,6 bij CVRM)`]);
+    }
+    if (ldl.status === 'verhoogd') return pv_r([`verhoogd LDL-cholesterol (${pv_g(ldl)})`]);
+    return pv_r([], ['cholesterol']);
 }
 
 function pv_regelOverig(waarden) {
-    const zinnen = [];
-    let aantalNormaal = 0;
+    const afw = [];
     waarden.forEach((w) => {
         if (w.gebruikt) return;
         w.gebruikt = true;
         if (PV_NEGEER.test(w.sleutel)) return;
-        if (w.status === 'normaal') { aantalNormaal++; return; }
-        if (w.status === 'onbekend') return; // tekst/informatieregel, bv. "patiënt nuchter geprikt"
-        const ref = (w.min != null || w.max != null) ? `; ref ${w.min != null ? w.min : ''}–${w.max != null ? w.max : ''}` : '';
-        zinnen.push(`${w.naam} ${w.status} (${pv_w(w)}${ref}).`);
+        if (w.status === 'verhoogd' || w.status === 'verlaagd') afw.push(`${w.naam} ${w.status} (${pv_g(w)})`);
     });
-    if (aantalNormaal) zinnen.push('Overige bepalingen normaal.');
-    return zinnen;
+    return pv_r(afw);
 }
 
 function pv_maakLabSamenvatting(waarden, ctx) {
-    const zinnen = [].concat(
+    const delen = [
         pv_regelNier(waarden),
         pv_regelElektrolyten(waarden),
         pv_regelGlucose(waarden, ctx),
@@ -409,8 +413,14 @@ function pv_maakLabSamenvatting(waarden, ctx) {
         pv_regelLever(waarden),
         pv_regelVitamines(waarden),
         pv_regelOverig(waarden)
-    );
-    return zinnen.join(' ');
+    ];
+    const afw = delen.flatMap((d) => d.afw);
+    const norm = Array.from(new Set(delen.flatMap((d) => d.norm)));
+    const hoofd = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+    if (!afw.length && !norm.length) return '';
+    if (!afw.length) return `Alles normaal (${norm.join(', ')}).`;
+    const tekst = afw.map(hoofd).join('. ') + '.';
+    return norm.length ? `${tekst} Verder alles normaal (${norm.join(', ')}).` : tekst;
 }
 
 // --- Episodes uit de lijst op het scherm ------------------------------------------------
