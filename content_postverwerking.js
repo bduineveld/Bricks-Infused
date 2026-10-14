@@ -728,11 +728,27 @@ function pv_afdelingKnop(regel, analyse, beste) {
 
 // Mag Infused het huidige adresboekcontact vervangen? Ja als het leeg is, of als het Bricks' eigen
 // suggestie van alleen de instelling is (bv. "Dagoziekenhuis") die nog niet is opgeslagen.
+// Mag Infused het huidige adresboekcontact vervangen?
+// - leeg: ja;
+// - een algemeen contact van de instelling (geen afdeling) terwijl er een afdelingscontact past
+//   ("Rode Kruis Ziekenhuis Beverwijk" → "!Radiologie RKZ"): ja, ook als Bricks het al had opgeslagen
+//   — het gebeurt alleen in het formulier, de huisarts slaat zelf op;
+// - Bricks' niet-opgeslagen suggestie van alleen de instelling: ja;
+// - anders (een ander, specifiek contact): nee.
 function pv_adresboekVervangbaar(pane, analyse) {
-    const huidig = pv_adresboekHuidig(pane);
+    const huidig = pv_norm(pv_adresboekHuidig(pane));
     if (!huidig) return true;
+    // Vast contact (ZorgDomein-terugkoppeling → eigen praktijk): altijd dat contact.
+    if (analyse.afzender && analyse.afzender.soort === 'vast') return huidig !== pv_norm(analyse.afzender.tekst);
     const inst = analyse.afzender && analyse.afzender.instelling;
-    return !(analyse.opgeslagenContactId > 0) && !!inst && pv_norm(huidig) === pv_norm(inst.naam);
+    if (!inst) return false;
+    const kandidaten = (analyse.adresboek && analyse.adresboek.kandidaten) || [];
+    const beste = pv_adresboekBeste(kandidaten);
+    if (beste && pv_norm(beste.naam) === huidig) return false;
+    const huidigeKandidaat = kandidaten.find((k) => pv_norm(k.naam) === huidig);
+    const huidigIsAlgemeen = huidig === pv_norm(inst.naam) || (huidigeKandidaat && !huidigeKandidaat.afdeling);
+    if (beste && beste.afdeling && huidigIsAlgemeen) return true;
+    return !(analyse.opgeslagenContactId > 0) && huidig === pv_norm(inst.naam);
 }
 
 // Na "Nieuw contact aanmaken": wacht tot het formulier dicht is (opgeslagen of geannuleerd), zoek
@@ -784,6 +800,19 @@ function pv_toonAdresboekRegel(kaart, pane, analyse) {
     const vervangbaar = pv_adresboekVervangbaar(pane, analyse);
     if (huidig && (!vervangbaar || (beste && pv_norm(huidig) === pv_norm(beste.naam)))) {
         regel.textContent = `Geadresseerde: ${huidig}` + (beste && pv_norm(huidig) !== pv_norm(beste.naam) ? ` (afzender in brief: ${analyse.afzender.tekst})` : '');
+        if (beste && pv_norm(huidig) !== pv_norm(beste.naam)) {
+            // Niet automatisch vervangen, maar wel met één klik mogelijk.
+            const b = pv_knop('Vervangen door ' + beste.naam, false);
+            b.addEventListener('click', async () => {
+                b.disabled = true;
+                const ok = await pv_kiesAdresboek(ab.query, beste, false);
+                b.disabled = false;
+                if (ok) b.textContent = '✓ ' + beste.naam;
+                else { b.title = 'Lukte niet — kies het contact zelf via het vergrootglas.'; b.style.borderColor = '#c53030'; }
+            });
+            regel.appendChild(document.createTextNode(' '));
+            regel.appendChild(b);
+        }
         pv_afdelingKnop(regel, analyse, beste);
         return;
     }

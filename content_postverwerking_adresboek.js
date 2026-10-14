@@ -186,6 +186,14 @@ function pv_scoorInstelling(afzender, entries) {
 // een andere volgorde (alfabetisch), dus kiezen gaat op naam, niet op positie.
 async function pv_adresboekKandidaten(afzender) {
     if (afzender && afzender.soort === 'instelling') return pv_adresboekKandidatenInstelling(afzender);
+    if (afzender && afzender.soort === 'vast') {
+        // Vast contact (bv. eigen praktijk bij ZorgDomein-terugkoppeling): exact op naam.
+        const query = afzender.tekst.replace(/^\s*!/, '').trim();
+        const res = await pv_adresboekZoek(query);
+        const kandidaten = res.filter((c) => pv_norm(c.Naam || c.JournaalNaam) === pv_norm(afzender.tekst))
+            .map((c) => ({ id: c.Id, naam: c.Naam || c.JournaalNaam || '', index: 0, score: 20, query, initiaalAnders: false, afdeling: true }));
+        return { query, kandidaten };
+    }
     if (!afzender || afzender.achternaam.length < 3) return { query: '', kandidaten: [] };
     const query = afzender.achternaam;
     let res = [];

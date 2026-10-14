@@ -16,6 +16,7 @@ const defaultOptions = {
   postTypenUit: [],
   postWeglaten: {},
   postKopjes: {},
+  postZdContact: '!Huisartsenpraktijk Broekpolder',
   zorgdomeinSnelkoppelingen: true,
   btnLabels: []
 };

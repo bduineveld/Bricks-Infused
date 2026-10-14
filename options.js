@@ -44,6 +44,7 @@ function getStorage(cb) {
 // --- Postverwerking brieven: typen, weg te laten blokken, extra kopjes ---------------------------
 // Houd gelijk met PV_BRIEFTYPEN (type + blokken) in content_postverwerking_brief.js.
 const PV_TYPEN_OPTIES = [
+  { type: 'ZorgDomein-terugkoppeling', blokken: [] },
   { type: 'Specialistenbrief', blokken: ['Beleid', 'Advies huisarts'] },
   { type: 'Opname', blokken: ['Reden', 'Conclusie', 'Beleid'] },
   { type: 'Meedenkadvies', blokken: ['Vraag', 'Advies', 'Beleid'] },
@@ -665,6 +666,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('opt-postverwerking-lab').checked = data.postverwerkingLab !== false;
     document.getElementById('opt-postverwerking-brief').checked = data.postverwerkingBrief !== false;
     renderPostverwerkingOpties(data);
+    document.getElementById('opt-zd-contact').value = data.postZdContact != null ? data.postZdContact : '!Huisartsenpraktijk Broekpolder';
     renderMedicijnGroepen(data);
     document.getElementById('opt-medicijn-lab').checked = data.medicijnLabwaarden !== false;
     document.getElementById('opt-zorgdomein').checked = data.zorgdomeinSnelkoppelingen !== false;
@@ -691,9 +693,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const zorgdomeinSnelkoppelingen = document.getElementById('opt-zorgdomein').checked;
     const btnLabels = collectBtnLabels();
     const { postTypenUit, postWeglaten, postKopjes } = collectPostverwerkingOpties();
+    const postZdContact = document.getElementById('opt-zd-contact').value.trim();
     const { medicijnGroepenUit, medicijnHoogrisico, medicijnEigenGroepen } = collectMedicijnGroepen();
     const medicijnLabwaarden = document.getElementById('opt-medicijn-lab').checked;
-    setStorage({ postTypenUit, postWeglaten, postKopjes, medicijnLabwaarden, medicijnGroepenUit, medicijnHoogrisico, medicijnEigenGroepen, klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, postverwerkingLab, postverwerkingBrief, zorgdomeinSnelkoppelingen, btnLabels }, () => {
+    setStorage({ postTypenUit, postWeglaten, postKopjes, postZdContact, medicijnLabwaarden, medicijnGroepenUit, medicijnHoogrisico, medicijnEigenGroepen, klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, postverwerkingLab, postverwerkingBrief, zorgdomeinSnelkoppelingen, btnLabels }, () => {
       document.getElementById('status').textContent = 'Opgeslagen!';
       setTimeout(() => document.getElementById('status').textContent = '', 1500);
     });

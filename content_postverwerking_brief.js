@@ -185,7 +185,19 @@ function pv_specialisme(regels) {
 // Volgorde = voorrang (eerste match wint), zoals Dokkie: specifieke typen vóór de algemene brief.
 // type + blokken staan ook in PV_TYPEN_OPTIES (options.js) voor de instellingenpagina: houd gelijk.
 
+// ZorgDomein-terugkoppeling: kopie van de eigen verwijzing, begint met "ZD<nummer>" en "verwijsbrief".
+const PV_ZD_TERUGKOPPELING = /^\s*zd\d{5,}\s*\n?\s*verwijsbrief/;
+
 const PV_BRIEFTYPEN = [
+    {
+        type: 'ZorgDomein-terugkoppeling',
+        blokken: [],
+        test: (t) => PV_ZD_TERUGKOPPELING.test(t),
+        maak: (r) => {
+            const reden = pv_eerste(r, [['reden van verwijzing', 'vraagstelling', 'verwijsreden', 'vraag', 'specialisme']], { max: 3 });
+            return ['ZorgDomein-verwijzing' + (reden ? ': ' + pv_zin(reden) : '.')];
+        }
+    },
     {
         type: 'GGZ',
         blokken: ['Recent', 'Beleid'],
@@ -457,7 +469,11 @@ async function pv_briefAnalyse(info) {
     const instelling = pv_instellingUitInfo(info);
     const persoon = ['Radiologie', 'Kweek', 'Pathologie'].includes(def.type) ? null
         : (pv_afzenderUitInfo(info) || pv_afzenderUitTekst(regels));
-    const afzender = persoon || pv_afzenderInstelling(instelling);
+    // ZorgDomein-terugkoppeling: afzender is de eigen praktijk (instelbaar adresboekcontact).
+    const zdContact = String(pv_opties.postZdContact || '').trim();
+    const afzender = def.type === 'ZorgDomein-terugkoppeling'
+        ? (zdContact ? { soort: 'vast', tekst: zdContact, naamDeel: zdContact, initialen: '', achternaam: '', functie: '', instelling: null } : null)
+        : (persoon || pv_afzenderInstelling(instelling));
     if (persoon) persoon.instelling = instelling;
     return {
         soort: 'brief',
