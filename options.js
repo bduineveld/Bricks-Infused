@@ -156,6 +156,8 @@ function renderMedicijnGroepen(data) {
     l.querySelector('input').checked = !uit.includes(g.id);
     l.querySelector('.mg-kleurvlak').style.background = g.kleur;
     l.querySelector('.mg-std-naam').textContent = g.naam;
+    // Groepen met een watermerk tonen hun icoon i.p.v. het kleurvlakje.
+    if (g.stijl === 'strook') l.querySelector('.mg-kleurvlak').replaceWith(maakIcoonBeeld(g.icoon, g.naam, g.kleurStrook || g.kleur, 18));
     if ((g.lab || []).length) {
       const lab = document.createElement('span');
       lab.className = 'mg-std-lab';
@@ -175,6 +177,59 @@ function renderMedicijnGroepen(data) {
   (data.medicijnEigenGroepen || []).forEach((g) => eigen.appendChild(maakEigenGroepRij(g)));
 }
 
+// Klein icoon (of letter) als <span> met inline SVG, voor de opties.
+function maakIcoonBeeld(icoon, naam, kleur, maat) {
+  const sp = document.createElement('span');
+  sp.className = 'mg-icoon';
+  sp.style.cssText = `display:inline-flex;width:${maat}px;height:${maat}px;flex:0 0 ${maat}px;`;
+  sp.innerHTML = medicijn_icoonSvg(icoon, naam, kleur, 1);
+  sp.firstChild.setAttribute('width', maat);
+  sp.firstChild.setAttribute('height', maat);
+  return sp;
+}
+
+// Iconenkiezer: raster met alle iconen uit medicijn_iconen.js, plus "letter" (geen icoon).
+function maakIcoonKiezer(rij) {
+  const kiezer = document.createElement('div');
+  kiezer.className = 'mg-kiezer';
+  kiezer.style.cssText = 'display:none;flex-wrap:wrap;gap:4px;margin-top:6px;padding:6px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;';
+  const kleur = () => rij.querySelector('.mg-kleur').value;
+  const kies = (icoon) => {
+    rij.dataset.icoon = icoon || '';
+    werkIcoonKnopBij(rij);
+    kiezer.style.display = 'none';
+  };
+  const knop = (icoon, titel) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.title = titel;
+    b.style.cssText = 'width:34px;height:34px;padding:4px;border:1px solid #e2e8f0;border-radius:6px;background:#f7fafc;cursor:pointer;display:flex;align-items:center;justify-content:center;';
+    b.appendChild(maakIcoonBeeld(icoon, rij.querySelector('.mg-naam').value || '?', '#4a5568', 22));
+    b.addEventListener('click', () => kies(icoon));
+    return b;
+  };
+  kiezer.appendChild(knop('', 'Geen icoon: eerste letter van de naam'));
+  Object.keys(MEDICIJN_ICONEN).forEach((k) => kiezer.appendChild(knop(k, MEDICIJN_ICONEN[k].naam)));
+  return kiezer;
+}
+
+function werkIcoonKnopBij(rij) {
+  const knop = rij.querySelector('.mg-icoon-knop');
+  if (!knop) return;
+  knop.innerHTML = '';
+  knop.appendChild(maakIcoonBeeld(rij.dataset.icoon, rij.querySelector('.mg-naam').value || '?', medicijnDonker(rij.querySelector('.mg-kleur').value), 20));
+  knop.title = rij.dataset.icoon && MEDICIJN_ICONEN[rij.dataset.icoon] ? 'Icoon: ' + MEDICIJN_ICONEN[rij.dataset.icoon].naam + ' (klik om te wijzigen)' : 'Icoon kiezen (nu: eerste letter)';
+}
+
+// Zelfde donkere variant als in de autorisatielijst (content.js → medicijn_donker).
+function medicijnDonker(hex) {
+  const m = String(hex).match(/^#([0-9a-f]{6})$/i);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const d = (v) => Math.round(v * 0.55).toString(16).padStart(2, '0');
+  return '#' + d(n >> 16) + d((n >> 8) & 255) + d(n & 255);
+}
+
 function maakEigenGroepRij(g) {
   const rij = document.createElement('div');
   rij.className = 'medicijn-groep';
@@ -183,8 +238,10 @@ function maakEigenGroepRij(g) {
   kop.className = 'medicijn-groep-kop';
   kop.innerHTML = '<input type="checkbox" class="mg-aan" title="Groep aan/uit">'
     + '<input type="color" class="mg-kleur" title="Kleur">'
+    + '<button type="button" class="mg-icoon-knop"></button>'
     + '<input type="text" class="mg-naam" placeholder="Naam van de groep">'
     + '<button type="button" class="mg-weg" title="Groep verwijderen">✕</button>';
+  rij.dataset.icoon = g.icoon || '';
   kop.querySelector('.mg-aan').checked = g.aan !== false;
   kop.querySelector('.mg-kleur').value = g.kleur || '#fde68a';
   kop.querySelector('.mg-naam').value = g.naam || '';
@@ -197,7 +254,15 @@ function maakEigenGroepRij(g) {
     if (confirm('Groep "' + (kop.querySelector('.mg-naam').value || 'zonder naam') + '" verwijderen?')) rij.remove();
   });
   rij.appendChild(kop);
+  const kiezer = maakIcoonKiezer(rij);
+  rij.appendChild(kiezer);
   rij.appendChild(woorden);
+  kop.querySelector('.mg-icoon-knop').addEventListener('click', () => {
+    kiezer.style.display = kiezer.style.display === 'none' ? 'flex' : 'none';
+  });
+  kop.querySelector('.mg-kleur').addEventListener('input', () => werkIcoonKnopBij(rij));
+  kop.querySelector('.mg-naam').addEventListener('input', () => werkIcoonKnopBij(rij));
+  werkIcoonKnopBij(rij);
   return rij;
 }
 
@@ -214,6 +279,7 @@ function collectMedicijnGroepen() {
     naam: rij.querySelector('.mg-naam').value.trim() || 'Eigen groep',
     kleur: rij.querySelector('.mg-kleur').value,
     aan: rij.querySelector('.mg-aan').checked,
+    icoon: rij.dataset.icoon || '',
     woorden: lijst(rij.querySelector('.mg-woorden').value)
   })).filter((g) => g.woorden.length || g.naam !== 'Eigen groep');
   return { medicijnGroepenUit, medicijnHoogrisico, medicijnEigenGroepen };

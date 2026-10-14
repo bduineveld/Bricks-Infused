@@ -100,9 +100,86 @@ function pv_specialismeVan(tekst, code) {
         || s.termen.some((term) => new RegExp('(^|[^a-z])' + pv_norm(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z]|$)').test(t))) || null;
 }
 
+// Afzender = instelling + afdeling ("Rode Kruis Ziekenhuis Beverwijk, Radiologie"). Voor berichten
+// zonder ondertekening door een persoon (radiologie, kweek, PA) of als er geen persoon te vinden is.
+function pv_afzenderInstelling(inst) {
+    if (!inst || !inst.naam) return null;
+    const tekst = inst.naam + (inst.afdeling ? ', ' + inst.afdeling : '');
+    return { soort: 'instelling', tekst, naamDeel: tekst, initialen: '', achternaam: '', functie: inst.afdeling || '', instelling: inst };
+}
+
+// Woorden die een instellingsnaam onderscheiden ("Rode Kruis Ziekenhuis Beverwijk" → rode, kruis, beverwijk).
+const PV_INSTELLING_ALGEMEEN = new Set(['ziekenhuis', 'medisch', 'centrum', 'mc', 'umc', 'stichting', 'zorg', 'groep',
+    'kliniek', 'polikliniek', 'afdeling', 'het', 'de', 'van', 'en', 'st', 'sint', 'locatie']);
+function pv_instellingWoorden(naam) {
+    return pv_norm(naam).replace(/[^a-z0-9 ]/g, ' ').split(' ').filter((w) => w.length > 2 && !PV_INSTELLING_ALGEMEEN.has(w));
+}
+
+// Afkortingen zoals adresboeken ze gebruiken: "Rode Kruis Ziekenhuis Beverwijk" → rkz, rkzb.
+// (Beginletters van alle woorden, en zonder het laatste woord — vaak de plaatsnaam.)
+function pv_instellingAfkortingen(naam) {
+    const w = pv_norm(naam).replace(/[^a-z0-9 ]/g, ' ').split(' ').filter((x) => x && !['de', 'het', 'van', 'en', 'te'].includes(x));
+    const alle = w.map((x) => x[0]).join('');
+    const zonderLaatste = w.slice(0, -1).map((x) => x[0]).join('');
+    return Array.from(new Set([zonderLaatste, alle])).filter((a) => a.length >= 3);
+}
+
+async function pv_adresboekZoek(query) {
+    try {
+        return pv_rv(await bricksBridge.doApi('TelefoonBoekContact', 'Zoek', { query }, true)) || [];
+    } catch (e) {
+        return [];
+    }
+}
+
+// Instelling: zoek op de volle naam, dan op de onderscheidende woorden; contacten bij die instelling
+// met de juiste afdeling scoren het hoogst, een algemeen contact van de instelling daarna.
+async function pv_adresboekKandidatenInstelling(afzender) {
+    const inst = afzender.instelling;
+    const woorden = pv_instellingWoorden(inst.naam);
+    // Volle naam, opvallende woorden, afkortingen ("RKZ") en de afdeling ("Radiologie" → "!Radiologie RKZ").
+    const queries = [inst.naam].concat(woorden.length > 1 ? [woorden.slice(0, 2).join(' ')] : [], woorden,
+        pv_instellingAfkortingen(inst.naam), inst.afdeling ? [inst.afdeling] : []);
+    const gezien = new Map(); // Id → { contact, query }
+    for (const q of Array.from(new Set(queries))) {
+        if (q.length < 3) continue;
+        (await pv_adresboekZoek(q)).forEach((c) => { if (c && !gezien.has(c.Id)) gezien.set(c.Id, { c, query: q }); });
+    }
+    return { query: inst.naam, kandidaten: pv_scoorInstelling(afzender, Array.from(gezien.values())) };
+}
+
+// Score per adresboekcontact voor een instelling-afzender; entries = [{ c: contact, query }].
+function pv_scoorInstelling(afzender, entries) {
+    const inst = afzender.instelling;
+    const woorden = pv_instellingWoorden(inst.naam);
+    const afkortingen = pv_instellingAfkortingen(inst.naam);
+    const specAfd = pv_specialismeVan(inst.afdeling || '');
+    const afd = pv_norm(inst.afdeling || '');
+    return entries.map(({ c, query }) => {
+        const naam = pv_norm([c.Naam, c.JournaalNaam, c.Organisatie].filter(Boolean).join(' '));
+        const tokens = naam.replace(/[^a-z0-9 ]/g, ' ').split(' ');
+        // Afkorting als los woord ("!radiologie rkz") telt als de volledige instellingsnaam.
+        const afkorting = afkortingen.some((a) => tokens.includes(a));
+        const treffers = afkorting ? woorden.length : woorden.filter((w) => naam.includes(w)).length;
+        // Zonder enig woord of afkorting van de instelling is het een ander ziekenhuis (bv. Dijklander, Radiologie).
+        if (woorden.length && !treffers) return null;
+        let score = woorden.length ? Math.round((treffers / woorden.length) * 6) : 0;
+        if (pv_norm(inst.naam) && naam.includes(pv_norm(inst.naam))) score += 2;
+        // De juiste afdeling weegt het zwaarst: "RKZ Beverwijk, Radiologie" gaat vóór het algemene contact.
+        const specContact = pv_specialismeVan(naam, c.DerdeCode);
+        const afdeling = (specAfd && specContact === specAfd) || (!specContact && !!afd && naam.includes(afd));
+        if (specAfd && specContact) score += specAfd === specContact ? 8 : -4;
+        else if (afd && naam.includes(afd)) score += 8;
+        // Persoon (initialen) bij die instelling is niet "de afdeling".
+        if (/\b[a-z]\.\s*[a-z]/.test(naam) && !(specAfd && specContact === specAfd)) score -= 2;
+        return { id: c.Id, naam: c.Naam || c.JournaalNaam || '', index: 0, score, query, initiaalAnders: false, afdeling };
+    }).filter((k) => k && k.score >= 4).sort((a, b) => b.score - a.score);
+}
+
 // Zoekt op achternaam en scoort elke kandidaat. Let op: Bricks' venster toont dezelfde contacten in
 // een andere volgorde (alfabetisch), dus kiezen gaat op naam, niet op positie.
 async function pv_adresboekKandidaten(afzender) {
+    if (afzender && afzender.soort === 'instelling') return pv_adresboekKandidatenInstelling(afzender);
     if (!afzender || afzender.achternaam.length < 3) return { query: '', kandidaten: [] };
     const query = afzender.achternaam;
     let res = [];
@@ -189,7 +266,7 @@ async function pv_kiesAdresboek(query, kandidaat, onzichtbaar) {
         const input = dlg.querySelector('input');
         if (!input) { annuleer(); return false; }
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-        setter.call(input, query);
+        setter.call(input, kandidaat.query || query); // instelling: de zoekterm die dit contact vond
         input.dispatchEvent(new Event('input', { bubbles: true }));
         // Kiezen op naam: het venster sorteert anders dan de API (alfabetisch). Twee items met precies
         // dezelfde naam → niet raden, stoppen.
@@ -242,9 +319,10 @@ async function pv_nieuwContact(afzender) {
     const spec = afzender.functie ? pv_specialismeVan(afzender.functie) : null;
     const functie = afzender.functie ? afzender.functie.toLowerCase() : '';
     const inst = afzender.instelling;
-    zet('Journaalkoptekst', afzender.naamDeel + (spec ? ', ' + spec.code : ''));
+    const isInstelling = afzender.soort === 'instelling';
+    zet('Journaalkoptekst', afzender.naamDeel + (spec && !isInstelling ? ', ' + spec.code : ''));
     zet('Code derde', spec ? spec.code : '');
-    zet('Naam', afzender.naamDeel + (functie ? ', ' + functie : ''));
+    zet('Naam', isInstelling ? afzender.tekst : afzender.naamDeel + (functie ? ', ' + functie : ''));
     if (inst) {
         zet('Adres 1', inst.naam + (inst.afdeling ? ', ' + inst.afdeling : ''));
         zet('Adres 2', inst.straat);

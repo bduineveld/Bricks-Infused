@@ -221,39 +221,25 @@ function loadGlobalOptions(callback) {
         if (age < 10000) { // 10 seconds
             callback(globalOptions);
             return;
-        } else {
-            // Reset cache to force reload
-            optionsLoaded = false;
-            globalOptions = null;
-            optionsTimestamp = null;
         }
+        optionsLoaded = false;
+        globalOptions = null;
+        optionsTimestamp = null;
     }
-    
-    if (chrome && chrome.storage && chrome.storage.sync) {
-        chrome.storage.sync.get(null, function(data) {
-            if (data && Object.keys(data).length > 0) {
-                globalOptions = data;
-                optionsTimestamp = Date.now();
-                optionsLoaded = true;
-                callback(globalOptions);
-            } else {
-                chrome.runtime.sendMessage({ type: 'getDefaults' }, (resp) => {
-                    globalOptions = resp.defaultOptions;
-                    optionsTimestamp = Date.now();
-                    optionsLoaded = true;
-                    callback(globalOptions);
-                });
-                return;
-            }
-        });
-    } else {
-        chrome.runtime.sendMessage({ type: 'getDefaults' }, (resp) => {
-            globalOptions = resp.defaultOptions;
+    // Altijd standaardwaarden + opgeslagen waarden. Zonder samenvoegen telde een nieuwe optie die
+    // standaard aan staat maar nooit is opgeslagen als "uit" zodra er iets anders (bv. klantnummer)
+    // in de opslag stond — terwijl de optiepagina hem als "aan" toonde.
+    chrome.runtime.sendMessage({ type: 'getDefaults' }, (resp) => {
+        const defaults = (resp && resp.defaultOptions) || {};
+        const klaar = (data) => {
+            globalOptions = Object.assign({}, defaults, data || {});
             optionsTimestamp = Date.now();
             optionsLoaded = true;
             callback(globalOptions);
-        });
-    }
+        };
+        if (chrome && chrome.storage && chrome.storage.sync) chrome.storage.sync.get(null, klaar);
+        else klaar({});
+    });
 }
 
 ///////////////////////////////// COMMUNICATIE KNOPPEN TOEVOEGEN //////////////////////////////////////////////////////////////
@@ -860,6 +846,29 @@ function addPdfExportButton() {
     });
 }
 
+// "2015-04-19 Cardioloog": datum van de brief (kop, anders eerste datum in de tekst) en specialisme
+// (kop, anders functie uit de ondertekening of specialisme uit de brief via de postverwerking).
+function pdf_bestandsnaam(berichtContainer, kopDatum, kopSpecialisme) {
+    const html = berichtContainer && berichtContainer.querySelector ? berichtContainer.querySelector('.bericht-html') : null;
+    const tekst = (html && html.innerText) || (berichtContainer && berichtContainer.innerText) || '';
+    const datumUit = (t) => {
+        const m = String(t || '').match(/(\d{1,2})[-./](\d{1,2})[-./](\d{4})/);
+        return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
+    };
+    const datum = datumUit(kopDatum) || datumUit(tekst) || new Date().toISOString().slice(0, 10);
+    let spec = String(kopSpecialisme || '').trim();
+    if (!spec && typeof pv_regels === 'function') {
+        try {
+            const regels = pv_regels(tekst);
+            const afz = typeof pv_afzenderUitTekst === 'function' ? pv_afzenderUitTekst(regels) : null;
+            spec = (afz && afz.functie) || (typeof pv_specialisme === 'function' ? pv_specialisme(regels) : '') || '';
+        } catch (e) { /* geen specialisme */ }
+    }
+    spec = spec.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
+    if (spec) spec = spec.charAt(0).toUpperCase() + spec.slice(1);
+    return spec ? `${datum} ${spec}` : `${datum} brief`;
+}
+
 function exportBerichtAsPdf(berichtContainer, options) {
     const opts = options || {};
     const maybeRedact = (t) => (opts.redactBsn ? redactBsnInText(t) : t);
@@ -880,6 +889,9 @@ function exportBerichtAsPdf(berichtContainer, options) {
         const headerLineHeight = 4.5; // Kleinere afstand tussen regels in header
         
         let currentY = marginTop;
+        // Voor de bestandsnaam: datum en specialisme uit de kop van het bericht.
+        let kopDatum = '';
+        let kopSpecialisme = '';
         
         // Haal de header tabel op (berichtsoort-med-kop-container)
         const headerContainer = berichtContainer.querySelector
@@ -917,6 +929,8 @@ function exportBerichtAsPdf(berichtContainer, options) {
                             value = maybeRedact(value);
                             if (label && value) {
                                 data.push({ label, value });
+                                if (!kopDatum && /datum/i.test(label)) kopDatum = value;
+                                if (!kopSpecialisme && /specialisme|specialist|afdeling/i.test(label)) kopSpecialisme = value.split('\n')[0];
                             }
                         }
                     });
@@ -1031,8 +1045,8 @@ function exportBerichtAsPdf(berichtContainer, options) {
         }
         
         // Genereer en download PDF
-        const suffix = opts.redactBsn ? '_geen_bsn' : '';
-        const fileName = `brief_${new Date().toISOString().slice(0, 10)}${suffix}.pdf`;
+        const suffix = opts.redactBsn ? ' (geen BSN)' : '';
+        const fileName = pdf_bestandsnaam(berichtContainer, kopDatum, kopSpecialisme) + suffix + '.pdf';
         doc.save(fileName);
         
         console.log('Brief geëxporteerd als PDF:', fileName);
@@ -1405,8 +1419,39 @@ function medicijn_clearRegel(receptRegel) {
     receptRegel.querySelectorAll('.bi-med-lab').forEach((n) => n.remove());
     delete receptRegel.__biGroep;
     receptRegel.style.backgroundColor = '';
+    receptRegel.style.backgroundImage = '';
+    receptRegel.style.backgroundRepeat = '';
+    receptRegel.style.backgroundPosition = '';
+    receptRegel.style.backgroundSize = '';
     receptRegel.classList.remove(...Array.from(receptRegel.classList).filter((c) => c.startsWith('medicijn-')));
     receptRegel.removeAttribute(MEDICIJN_MARK_ATTR);
+}
+
+// Watermerk vooraan in de regel (groepen met stijl 'strook'): icoon per groep (Health Icons, zie
+// medicijn_iconen.js), of de eerste letter van de naam. Half doorzichtig, achter Bricks' waarschuwing.
+function medicijn_icoonUrl(groep, dekking) {
+    // Eigen groepen hebben een lichte kleur: icoon dan in een donkere variant.
+    const kleur = groep.kleurStrook || medicijn_donker(groep.kleur || '#666666');
+    const svg = medicijn_icoonSvg(groep.icoon, groep.naam, kleur, dekking);
+    return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
+}
+
+// #rrggbb → 45% donkerder, voor lichte (pastel)kleuren van eigen groepen.
+function medicijn_donker(hex) {
+    const m = String(hex).match(/^#([0-9a-f]{6})$/i);
+    if (!m) return hex;
+    const n = parseInt(m[1], 16);
+    const d = (v) => Math.round(v * 0.55).toString(16).padStart(2, '0');
+    return '#' + d(n >> 16) + d((n >> 8) & 255) + d(n & 255);
+}
+
+function medicijn_watermerk(receptRegel, groep) {
+    const h = receptRegel.offsetHeight || 40;
+    const maat = Math.max(24, Math.min(h - 2, 44));
+    receptRegel.style.backgroundImage = medicijn_icoonUrl(groep, 0.3);
+    receptRegel.style.backgroundRepeat = 'no-repeat';
+    receptRegel.style.backgroundPosition = '-4px center';
+    receptRegel.style.backgroundSize = `${maat}px ${maat}px`;
 }
 
 // Kleine legenda boven de lijst: alleen de groepen die in deze lijst voorkomen, met aantal.
@@ -1420,7 +1465,9 @@ function medicijn_toonLegenda(root, gevonden) {
     groepen.forEach(({ groep, aantal }) => {
         const chip = document.createElement('span');
         chip.textContent = `${groep.naam} (${aantal})`;
-        chip.style.cssText = `background:${groep.kleur};border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:1px 8px;color:#333;`;
+        chip.style.cssText = groep.stijl === 'strook'
+            ? `background:#fff ${medicijn_icoonUrl(groep, 0.8)} no-repeat 4px center / 14px 14px;border:1px solid rgba(0,0,0,0.12);border-radius:10px;padding:1px 8px 1px 22px;color:#333;`
+            : `background:${groep.kleur};border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:1px 8px;color:#333;`;
         legenda.appendChild(chip);
     });
     const eerste = root.querySelector('.rapport44-recept');
@@ -1465,7 +1512,13 @@ function medicijn_markeringen() {
                 for (const groep of groepen) {
                     if (!groep.woordenNorm.some((w) => naamNorm.includes(w))) continue;
                     console.log(`${groep.id} gevonden: ${medicijnNaam}`);
-                    receptRegel.style.backgroundColor = groep.kleur;
+                    // Oorspronkelijke risicogroepen: hele regel. Overige groepen: alleen een icoon (watermerk)
+                    // vooraan, zodat de risicomedicatie eruit blijft springen.
+                    if (groep.stijl === 'strook') {
+                        medicijn_watermerk(receptRegel, groep);
+                    } else {
+                        receptRegel.style.backgroundColor = groep.kleur;
+                    }
                     receptRegel.classList.add('medicijn-' + groep.id);
                     receptRegel.setAttribute(MEDICIJN_MARK_ATTR, groep.id);
                     receptRegel.__biGroep = groep;
@@ -1513,8 +1566,9 @@ function medicijn_labVoorPatient(patientId) {
                 const datum = new Date(u.Datum);
                 if (!key || isNaN(datum) || !u.WaardeDisplay) return;
                 if (nieuwste[key] && nieuwste[key].datum >= datum) return;
+                const def = MEDICIJN_LABWAARDEN[key];
                 nieuwste[key] = {
-                    tekst: u.WaardeDisplay + (u.MetingEenheid ? ' ' + u.MetingEenheid : ''),
+                    tekst: medicijn_waardeTekst(u, def) + (u.MetingEenheid && !def.zonderEenheid ? ' ' + u.MetingEenheid : ''),
                     getal: parseFloat(String(u.WaardeDisplay).replace(/[<>\s]/g, '').replace(',', '.')),
                     datum,
                     afwijkend: !!u.Afwijkend,
@@ -1530,14 +1584,32 @@ function medicijn_labVoorPatient(patientId) {
     return MEDICIJN_LAB_CACHE.get(patientId);
 }
 
+// "mrt'26"
 function medicijn_maandJaar(d) {
-    return String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear();
+    const maanden = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+    return maanden[d.getMonth()] + "'" + String(d.getFullYear()).slice(2);
+}
+
+// Vast aantal decimalen waar dat hoort (LDL 2,0 i.p.v. "2"): Bricks levert Waarde ×1000 en een
+// WaardeDisplay zonder nullen achteraan. "<" of ">" uit de display blijft staan.
+function medicijn_waardeTekst(u, def) {
+    const disp = String(u.WaardeDisplay || '');
+    if (def && def.decimalen != null && u.Waarde != null && /^-?\d+$/.test(String(u.Waarde))) {
+        const prefix = (disp.match(/^[<>]=?\s*/) || [''])[0];
+        return prefix + (Number(u.Waarde) / 1000).toFixed(def.decimalen).replace('.', ',');
+    }
+    return disp;
 }
 
 // Labwaarden die bij deze regel horen (groep.labAlleen: alleen bij bepaalde middelen, bv. DOAC's).
 function medicijn_labKeysVoorRegel(rr) {
     const g = rr.__biGroep;
     if (!g || !(g.lab || []).length) return [];
+    if (Array.isArray(g.labNiet) && g.labNiet.length) {
+        const naamEl = medicijn_findNameEl(rr);
+        const naam = medicijn_normalize(naamEl ? naamEl.textContent : '');
+        if (g.labNiet.some((w) => naam.includes(medicijn_normalize(w)))) return [];
+    }
     if (Array.isArray(g.labAlleen) && g.labAlleen.length) {
         const naamEl = medicijn_findNameEl(rr);
         const naam = medicijn_normalize(naamEl ? naamEl.textContent : '');
@@ -1546,19 +1618,18 @@ function medicijn_labKeysVoorRegel(rr) {
     return g.lab;
 }
 
-// 'rood' | 'oranje' | '' — eGFR op eigen grenzen (rood < 30; bij DOAC oranje < 50), de rest op de
-// labvlag. Onbekend of ouder dan een jaar is altijd minstens oranje.
+// 'oranje' = actie nodig: geen waarde of laatste waarde ouder dan 13 maanden.
+// 'geel'   = afwijkend: eGFR < 30 (bij DOAC < 50), of afwijkend volgens het lab (niet bij HbA1c).
+// ''       = in orde.
 function medicijn_labNiveau(key, w, groep) {
     if (!w) return 'oranje';
-    const oud = (Date.now() - w.datum.getTime()) > 365 * 86400000;
-    let niveau = '';
+    if ((Date.now() - w.datum.getTime()) > 396 * 86400000) return 'oranje';
     if (key === 'egfr' && !isNaN(w.getal)) {
-        if (w.getal < 30) niveau = 'rood';
-        else if (groep.egfrOranjeOnder && w.getal < groep.egfrOranjeOnder) niveau = 'oranje';
-    } else if (w.afwijkend) {
-        niveau = 'oranje';
+        if (w.getal < 30 || (groep.egfrOranjeOnder && w.getal < groep.egfrOranjeOnder)) return 'geel';
+        return '';
     }
-    return niveau || (oud ? 'oranje' : '');
+    if (key === 'hba1c') return '';
+    return w.afwijkend ? 'geel' : '';
 }
 
 async function medicijn_toonLabwaarden(receptenDom) {
@@ -1600,15 +1671,15 @@ async function medicijn_toonLabwaarden(receptenDom) {
                 const def = MEDICIJN_LABWAARDEN[key];
                 const w = labs[key];
                 const chip = document.createElement('span');
-                const oud = w && (Date.now() - w.datum.getTime()) > 365 * 86400000;
-                chip.textContent = w ? `${def.label} ${w.tekst} · ${medicijn_maandJaar(w.datum)}` : `${def.label} onbekend`;
+                const oud = w && (Date.now() - w.datum.getTime()) > 396 * 86400000;
+                chip.textContent = w ? `${def.label} ${w.tekst} ${medicijn_maandJaar(w.datum)}` : `${def.label} onbekend`;
                 chip.title = w ? `${w.naam}: ${w.tekst} op ${w.datum.toLocaleDateString('nl-NL')}`
-                    + (w.afwijkend ? ' (afwijkend volgens lab)' : '') + (oud ? ' — ouder dan een jaar' : '')
+                    + (w.afwijkend ? ' (afwijkend volgens lab)' : '') + (oud ? ' — ouder dan 13 maanden' : '')
                     : `Geen ${def.label} gevonden in de metingen van deze patiënt`;
                 const niveau = medicijn_labNiveau(key, w, rr.__biGroep);
                 chip.style.cssText = 'font-size:11px;padding:0 6px;border-radius:8px;white-space:nowrap;'
-                    + (niveau === 'rood' ? 'background:#fff0f0;border:1px solid #fc8181;color:#c53030;font-weight:600;'
-                        : niveau === 'oranje' ? 'background:#fff4e5;border:1px solid #f6ad55;color:#9c4221;'
+                    + (niveau === 'oranje' ? 'background:#fff4e5;border:1px solid #f6ad55;color:#9c4221;font-weight:600;'
+                        : niveau === 'geel' ? 'background:#fefcbf;border:1px solid #ecc94b;color:#744210;'
                             : 'background:#fff;border:1px solid #cbd5e0;color:#4a5568;');
                 houder.appendChild(chip);
             });

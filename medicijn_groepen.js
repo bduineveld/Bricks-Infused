@@ -7,36 +7,43 @@
 //   medicijnEigenGroepen:  [{ id, naam, kleur, aan, woorden }]   volledig eigen groepen
 // De woordenlijsten van de overige standaardgroepen zijn bewust niet aanpasbaar.
 //
+// stijl: 'rij' = hele regel kleuren (de oorspronkelijke risicogroepen), 'strook' = alleen een
+// gekleurde strook vooraan (overige groepen), zodat de risicomedicatie eruit blijft springen.
+// Bij 'strook' komt er een half doorzichtig icoon (watermerk) vóór de tekst, achter een eventuele
+// waarschuwing van Bricks: `icoon` (sleutel uit MEDICIJN_ICONEN in medicijn_iconen.js, Health Icons)
+// in `kleurStrook`. Eigen groepen kiezen zelf een icoon; zonder icoon de eerste letter van de naam,
+// in een donkere variant van de eigen kleur.
+//
 // Volgorde = voorrang: eigen groepen eerst, dan de standaardgroepen in deze volgorde. Een regel
 // krijgt de kleur van de EERSTE groep die past (bv. diazepam: Benzodiazepinen vóór Psychofarmaca).
 // Woorden matchen als deel van de medicijnnaam, zonder hoofdletters/accenten (codeïne = CODEINE).
 
 const MEDICIJN_STANDAARD_GROEPEN = [
     {
-        id: 'opiaat', naam: 'Opiaten', kleur: '#ffe4cc', aan: true,
+        id: 'opiaat', stijl: 'rij', naam: 'Opiaten', kleur: '#ffe4cc', aan: true,
         woorden: ['morfine', 'oxycodon', 'fentanyl', 'codeine', 'tramadol', 'tapentadol', 'buprenorfine', 'methadon',
             'hydromorfon', 'pethidine', 'diamorfine']
     },
     {
-        id: 'benzodiazepine', naam: 'Benzodiazepinen en Z-drugs', kleur: '#fff2cc', aan: true,
+        id: 'benzodiazepine', stijl: 'rij', naam: 'Benzodiazepinen en Z-drugs', kleur: '#fff2cc', aan: true,
         woorden: ['oxazepam', 'temazepam', 'bromazepam', 'lorazepam', 'diazepam', 'alprazolam', 'clonazepam',
             'midazolam', 'nitrazepam', 'flunitrazepam', 'triazolam', 'chloordiazepoxide', 'clorazepinezuur',
             'zolpidem', 'zopiclon']
     },
     {
-        id: 'adhd', naam: 'ADHD-medicatie', kleur: '#f0f8cc', aan: true,
+        id: 'adhd', stijl: 'rij', naam: 'ADHD-medicatie', kleur: '#f0f8cc', aan: true,
         woorden: ['methylfenidaat', 'dexamfetamine', 'lisdexamfetamine', 'atomoxetine', 'guanfacine', 'clonidine',
             'concerta', 'ritalin', 'medikinet', 'equasym', 'focalin', 'adderall', 'vyvanse', 'strattera', 'intuniv',
             'kapvay']
     },
     {
         // De enige standaardgroep waarvan de gebruiker de woorden mag aanpassen.
-        id: 'hoogrisico', naam: 'Hoogrisicomedicatie', kleur: '#ffcccc', aan: true, bewerkbaar: true, lab: ['egfr', 'alat'],
+        id: 'hoogrisico', stijl: 'rij', naam: 'Hoogrisicomedicatie', kleur: '#ffcccc', aan: true, bewerkbaar: true, lab: ['egfr', 'alat'],
         woorden: ['methotrexaat', 'amiodaron']
     },
     {
         // Ascal/carbasalaatcalcium en acetylsalicylzuur horen hier, NIET bij de NSAID's.
-        id: 'bloedverdunner', naam: 'Bloedverdunners', kleur: '#fce7f3', aan: true,
+        id: 'bloedverdunner', stijl: 'strook', icoon: 'blood-drop', kleurStrook: '#db2777', naam: 'Bloedverdunners', kleur: '#fce7f3', aan: true,
         // Labwaarden alleen bij de DOAC's; eGFR bij een DOAC al oranje vanaf < 50.
         lab: ['egfr'], labAlleen: ['apixaban', 'rivaroxaban', 'edoxaban', 'dabigatran', 'eliquis', 'xarelto', 'lixiana', 'pradaxa'],
         egfrOranjeOnder: 50,
@@ -46,12 +53,12 @@ const MEDICIJN_STANDAARD_GROEPEN = [
             'dalteparine', 'enoxaparine', 'tinzaparine', 'fraxiparine', 'fragmin']
     },
     {
-        id: 'nsaid', naam: "NSAID's", kleur: '#e7e5e4', aan: true, lab: ['egfr'],
+        id: 'nsaid', stijl: 'strook', icoon: 'joints', kleurStrook: '#78716c', naam: "NSAID's", kleur: '#e7e5e4', aan: true, lab: ['egfr'],
         woorden: ['ibuprofen', 'naproxen', 'diclofenac', 'aceclofenac', 'celecoxib', 'etoricoxib', 'meloxicam',
             'piroxicam', 'indometacine', 'ketoprofen', 'dexketoprofen', 'nabumeton', 'ketorolac', 'arthrotec']
     },
     {
-        id: 'antidiabetica', naam: 'Antidiabetica', kleur: '#dcfce7', aan: true, lab: ['hba1c', 'egfr'],
+        id: 'antidiabetica', stijl: 'strook', icoon: 'diabetes', kleurStrook: '#16a34a', naam: 'Antidiabetica', kleur: '#dcfce7', aan: true, lab: ['hba1c', 'egfr'],
         woorden: ['metformine', 'gliclazide', 'glimepiride', 'glibenclamide', 'tolbutamide', 'sitagliptine',
             'vildagliptine', 'linagliptine', 'saxagliptine', 'alogliptine', 'empagliflozine', 'dapagliflozine',
             'canagliflozine', 'ertugliflozine', 'pioglitazon', 'acarbose', 'repaglinide', 'liraglutide', 'semaglutide',
@@ -59,7 +66,9 @@ const MEDICIJN_STANDAARD_GROEPEN = [
             'abasaglar', 'novorapid', 'humalog', 'apidra', 'fiasp', 'humuline', 'insulatard', 'novomix']
     },
     {
-        id: 'bloeddruk', naam: 'Bloeddrukmedicatie', kleur: '#dbeafe', aan: true, lab: ['kalium', 'egfr'],
+        id: 'bloeddruk', stijl: 'strook', icoon: 'blood-pressure', kleurStrook: '#2563eb', naam: 'Bloeddrukmedicatie', kleur: '#dbeafe', aan: true, lab: ['egfr'],
+        // Geen nierfunctie bij bètablokkers.
+        labNiet: ['metoprolol', 'bisoprolol', 'atenolol', 'nebivolol', 'propranolol', 'carvedilol', 'labetalol', 'celiprolol'],
         woorden: [
             // ACE-remmers en ARB's
             'enalapril', 'lisinopril', 'perindopril', 'ramipril', 'captopril', 'fosinopril', 'quinapril', 'trandolapril',
@@ -76,16 +85,16 @@ const MEDICIJN_STANDAARD_GROEPEN = [
         ]
     },
     {
-        id: 'cholesterol', naam: 'Cholesterolmedicatie', kleur: '#ede9fe', aan: true, lab: ['ldl'],
+        id: 'cholesterol', stijl: 'strook', icoon: 'blood-vessel', kleurStrook: '#7c3aed', naam: 'Cholesterolmedicatie', kleur: '#ede9fe', aan: true, lab: ['ldl'],
         woorden: ['simvastatine', 'atorvastatine', 'rosuvastatine', 'pravastatine', 'fluvastatine', 'pitavastatine',
             'ezetimib', 'evolocumab', 'alirocumab', 'inclisiran', 'bempedoinezuur', 'fenofibraat', 'gemfibrozil']
     },
     {
-        id: 'schildklier', naam: 'Schildkliermedicatie', kleur: '#cffafe', aan: true, lab: ['tsh', 'ft4'],
+        id: 'schildklier', stijl: 'strook', icoon: 'thyroid', kleurStrook: '#0891b2', naam: 'Schildkliermedicatie', kleur: '#cffafe', aan: true, lab: ['tsh', 'ft4'],
         woorden: ['levothyroxine', 'liothyronine', 'thyrax', 'euthyrox', 'thiamazol', 'propylthiouracil']
     },
     {
-        id: 'psychofarmaca', naam: 'Psychofarmaca', kleur: '#fae8ff', aan: true,
+        id: 'psychofarmaca', stijl: 'strook', icoon: 'mental-health', kleurStrook: '#c026d3', naam: 'Psychofarmaca', kleur: '#fae8ff', aan: true,
         woorden: [
             // antidepressiva
             'sertraline', 'citalopram', 'escitalopram', 'paroxetine', 'fluoxetine', 'fluvoxamine', 'venlafaxine',
@@ -102,11 +111,11 @@ const MEDICIJN_STANDAARD_GROEPEN = [
 // uit Bricks' bepalingenlijst (Bepaling.GetList). Met deze codes volstaat één call per patiënt
 // (LabBepalingMeting.GetUitslagenByWCIACodes). POC-varianten en vervallen codes tellen mee.
 const MEDICIJN_LABWAARDEN = {
-    egfr: { label: 'eGFR', codes: ['KREC/O/FB', 'KREM/O/FB', 'KREC/O/PO', 'KREM/O/PO'] },
-    kalium: { label: 'K', codes: ['K/B/', 'K/B/PO'] },
-    hb: { label: 'Hb', codes: ['HB/B/'] },
+    egfr: { label: 'eGFR', codes: ['KREC/O/FB', 'KREM/O/FB', 'KREC/O/PO', 'KREM/O/PO'], zonderEenheid: true, decimalen: 0 },
+    kalium: { label: 'K', codes: ['K/B/', 'K/B/PO'], decimalen: 1 },
+    hb: { label: 'Hb', codes: ['HB/B/'], decimalen: 1 },
     hba1c: { label: 'HbA1c', codes: ['HBAC/B/', 'HBAP/B/PO', 'HBAP/B/', 'HB1C/B/', 'GLHB/B/'] },
-    ldl: { label: 'LDL', codes: ['LDL/B/', 'LDLD/B/', 'LDL/B/PO'] },
+    ldl: { label: 'LDL', codes: ['LDL/B/', 'LDLD/B/', 'LDL/B/PO'], decimalen: 1 },
     tsh: { label: 'TSH', codes: ['TSH/B/'] },
     ft4: { label: 'FT4', codes: ['FT4/B/'] },
     alat: { label: 'ALAT', codes: ['ALAT/B/'] }
@@ -118,7 +127,7 @@ function medicijn_groepenUitOpties(options) {
     const uit = Array.isArray(o.medicijnGroepenUit) ? o.medicijnGroepenUit : [];
     const hoog = Array.isArray(o.medicijnHoogrisico) ? o.medicijnHoogrisico : null;
     const eigen = (Array.isArray(o.medicijnEigenGroepen) ? o.medicijnEigenGroepen : [])
-        .map((g) => Object.assign({}, g, { eigen: true }));
+        .map((g) => Object.assign({}, g, { eigen: true, stijl: 'strook' })); // eigen groepen: strook vooraan
     const standaard = MEDICIJN_STANDAARD_GROEPEN.map((g) => Object.assign({}, g, {
         aan: !uit.includes(g.id),
         woorden: g.bewerkbaar && hoog ? hoog : g.woorden

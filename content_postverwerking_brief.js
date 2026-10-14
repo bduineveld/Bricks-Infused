@@ -452,8 +452,13 @@ async function pv_briefAnalyse(info) {
     const diagnoseTekst = (def.diagnose && def.diagnose(regels, t, ruw))
         || pv_eerste(regels, [['diagnose', 'werkdiagnose', 'conclusie', 'c/']], { max: 3, laatste: true })
         || '';
-    const afzender = pv_afzenderUitInfo(info) || pv_afzenderUitTekst(regels);
-    if (afzender) afzender.instelling = pv_instellingUitInfo(info);
+    // Radiologie, kweek en PA: de afzender is de instelling + afdeling (geen ondertekening door een
+    // persoon). Anders de persoon uit het bericht/ondertekening, met de instelling als terugval.
+    const instelling = pv_instellingUitInfo(info);
+    const persoon = ['Radiologie', 'Kweek', 'Pathologie'].includes(def.type) ? null
+        : (pv_afzenderUitInfo(info) || pv_afzenderUitTekst(regels));
+    const afzender = persoon || pv_afzenderInstelling(instelling);
+    if (persoon) persoon.instelling = instelling;
     return {
         soort: 'brief',
         type: def.type,

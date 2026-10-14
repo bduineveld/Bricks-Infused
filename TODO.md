@@ -26,3 +26,14 @@
       antidiabetica, K/eGFR bij bloeddruk, LDL, TSH, eGFR/ALAT bij hoogrisico).
 - [ ] Eigen medicatiegroepen ook labwaarden laten kiezen.
 - [ ] Medicatiegroepen live testen in de autorisatielijst (kleuren, voorrang, legenda).
+
+## Bugs / wensen (14-10-2026) — gebouwd, nog live te testen
+
+- [ ] Juvoly: een nieuwe regel in de samenvatting werd na overnemen 3 nieuwe regels (lege regels samengevoegd).
+- [ ] Brief-export (PDF): bestandsnaam "2015-04-19 Cardioloog" (datum + specialisme uit de kop, anders uit de brief).
+- [ ] Instellingen die standaard aan staan maar nooit zijn opgeslagen, werkten niet; nu altijd samengevoegd met
+      de standaardwaarden.
+- [ ] Autorisatielijst: alleen ADHD, benzo's, opiaten en hoogrisico een hele rij; overige groepen een strook vooraan.
+- [ ] Labeltjes: HbA1c niet kleuren bij afwijkend; bloeddruk alleen eGFR (geen kalium), bètablokkers geen eGFR.
+- [ ] Labeltjes: "eGFR 101 mrt'26" (zonder eenheid); LDL/K/Hb altijd 1 decimaal.
+- [ ] Labeltjes: afwijkend = geel; ouder dan 13 maanden of onbekend = oranje.

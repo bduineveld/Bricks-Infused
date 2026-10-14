@@ -598,6 +598,16 @@ function pv_patientGeboortedatum(pane) {
 
 const pv_adresboekPogingen = new Map(); // berichtId → aantal automatische pogingen (klaar = 99)
 
+// Afzender is een instelling + afdeling, maar het adresboek heeft alleen een algemeen contact van de
+// instelling: bied aan om een contact voor de afdeling aan te maken (het algemene blijft ingevuld).
+function pv_afdelingKnop(regel, analyse, beste) {
+    const a = analyse.afzender;
+    if (!a || a.soort !== 'instelling' || !a.instelling || !a.instelling.afdeling) return;
+    if (beste && beste.afdeling) return;
+    regel.appendChild(document.createTextNode(' '));
+    regel.appendChild(pv_nieuwContactKnop(a, `Nieuw contact: ${a.tekst}`));
+}
+
 // Mag Infused het huidige adresboekcontact vervangen? Ja als het leeg is, of als het Bricks' eigen
 // suggestie van alleen de instelling is (bv. "Dagoziekenhuis") die nog niet is opgeslagen.
 function pv_adresboekVervangbaar(pane, analyse) {
@@ -607,8 +617,8 @@ function pv_adresboekVervangbaar(pane, analyse) {
     return !(analyse.opgeslagenContactId > 0) && !!inst && pv_norm(huidig) === pv_norm(inst.naam);
 }
 
-function pv_nieuwContactKnop(afzender) {
-    const b = pv_knop('Nieuw contact aanmaken', false);
+function pv_nieuwContactKnop(afzender, tekst) {
+    const b = pv_knop(tekst || 'Nieuw contact aanmaken', false);
     b.title = 'Opent het venster van Bricks met de afzender alvast ingevuld; controleer en sla zelf op.';
     b.addEventListener('click', async () => {
         if (!(await pv_nieuwContact(afzender))) {
@@ -630,6 +640,7 @@ function pv_toonAdresboekRegel(kaart, pane, analyse) {
     const vervangbaar = pv_adresboekVervangbaar(pane, analyse);
     if (huidig && (!vervangbaar || (beste && pv_norm(huidig) === pv_norm(beste.naam)))) {
         regel.textContent = `Geadresseerde: ${huidig}` + (beste && pv_norm(huidig) !== pv_norm(beste.naam) ? ` (afzender in brief: ${analyse.afzender.tekst})` : '');
+        pv_afdelingKnop(regel, analyse, beste);
         return;
     }
     if (!ab.kandidaten.length) {
@@ -670,6 +681,7 @@ async function pv_adresboekAutomatisch(analyse) {
     if (regel) {
         regel.textContent = ok ? `✓ Geadresseerde ingevuld: ${beste.naam} (herkend uit "${analyse.afzender.tekst}"; controleer en sla op)`
             : `Geadresseerde "${beste.naam}" kon niet automatisch worden ingevuld; kies via het vergrootglas.`;
+        if (ok) pv_afdelingKnop(regel, analyse, beste);
     }
 }
 

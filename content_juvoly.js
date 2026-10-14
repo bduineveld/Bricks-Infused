@@ -149,7 +149,8 @@ function juvoly_readSoepFromRows() {
     if (!key || out[key]) return;
     const content = li.querySelector(':scope > [class*="group/content"]');
     const box = content.querySelector('[contenteditable="true"]') || content.querySelector('.w-full.grow') || content;
-    out[key] = String(box.innerText || '').replace(/\u00ad/g, '').trim();
+    // innerText van een contenteditable geeft per alinea een witregel; één nieuwe regel werd zo drie.
+    out[key] = String(box.innerText || '').replace(/\u00ad/g, '').replace(/\r/g, '').replace(/\n\s*\n+/g, '\n').trim();
   });
   return out;
 }
