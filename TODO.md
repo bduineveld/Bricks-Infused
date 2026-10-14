@@ -31,9 +31,20 @@
 
 - [ ] Juvoly: een nieuwe regel in de samenvatting werd na overnemen 3 nieuwe regels (lege regels samengevoegd).
 - [ ] Brief-export (PDF): bestandsnaam "2015-04-19 Cardioloog" (datum + specialisme uit de kop, anders uit de brief).
+      Fix 2.6.0: niet meer de geboortedatum; soort organisatie (bv. fysiotherapeut) als er geen afdeling is.
 - [ ] Instellingen die standaard aan staan maar nooit zijn opgeslagen, werkten niet; nu altijd samengevoegd met
       de standaardwaarden.
 - [ ] Autorisatielijst: alleen ADHD, benzo's, opiaten en hoogrisico een hele rij; overige groepen een strook vooraan.
 - [ ] Labeltjes: HbA1c niet kleuren bij afwijkend; bloeddruk alleen eGFR (geen kalium), bètablokkers geen eGFR.
 - [ ] Labeltjes: "eGFR 101 mrt'26" (zonder eenheid); LDL/K/Hb altijd 1 decimaal.
 - [ ] Labeltjes: afwijkend = geel; ouder dan 13 maanden of onbekend = oranje.
+
+## Gebouwd tot en met 2.6.0 — nog live te testen
+
+- [ ] RKZ-radiologie en -lab in productie: afzender "!Radiologie RKZ" / "!Laboratorium RKZ".
+- [ ] ZorgDomein-terugkoppeling: afzender "!Huisartsenpraktijk Broekpolder".
+- [ ] Urine (dysmorfe ery's), allergietest, CRP/BSE-marge van 5.
+- [ ] Microbiologie/SOA-test (MEDVRI) en het vangnet "labbericht zonder tabel → brief".
+- [ ] "Slecht cholesterol onmeetbaar hoog" en "schildklier goed ingesteld".
+- [ ] Nieuw contact: knop "Toewijzen" verschijnt en vult het contact in.
+- [ ] Watermerk-iconen (Health Icons) en icoonkiezer voor eigen groepen in de echte autorisatielijst.

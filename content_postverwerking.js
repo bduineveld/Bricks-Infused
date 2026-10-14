@@ -54,7 +54,8 @@ const PV_PATRONEN = {
     b12: /b12|cobalamine/,
     folium: /foliumzuur|folaat/,
     vitd: /vitamine d|25.?oh/,
-    ldl: /\bldl\b/
+    ldl: /\bldl\b(?!.*(hdl|ratio))/,
+    trig: /triglycerid/
 };
 
 let pv_opties = {};
@@ -237,7 +238,7 @@ function pv_regelSchildklier(waarden, ctx) {
     const waardes = `TSH ${pv_g(tsh)}` + (ft4 ? `, FT4 ${f === 'normaal' ? 'normaal' : pv_g(ft4)}` : '');
 
     if (ctx.heeftT86) {
-        if (t === 'normaal') return pv_r([], ['schildklierwaarde (medicatie goed ingesteld)']);
+        if (t === 'normaal') return pv_r([], ['schildklier goed ingesteld']);
         if (t === 'verhoogd' && (!ft4 || f !== 'verhoogd')) return pv_r([`schildkliermedicatie te laag ingesteld (${waardes})`]);
         if (t === 'verlaagd' && (!ft4 || f !== 'verlaagd')) return pv_r([`schildkliermedicatie te hoog ingesteld (${waardes})`]);
         return pv_r([`afwijkende schildklierwaarden (${waardes})`]);
@@ -387,6 +388,15 @@ function pv_regelVitamines(waarden) {
 function pv_regelLdl(waarden, ctx) {
     const ldl = pv_pak(waarden, 'ldl');
     if (!ldl) return pv_r();
+    // LDL zonder getal ("Zie-Opm", "niet te berekenen"): bij hoge triglyceriden (Friedewald gaat niet
+    // meer) is het slechte cholesterol onmeetbaar hoog. Nooit als "normaal" tellen.
+    if (ldl.getal == null) {
+        const trig = pv_zoek(waarden, 'trig');
+        const trigHoog = trig && trig.getal != null && (trig.status === 'verhoogd' || trig.getal > 4.5);
+        const onberekenbaar = /niet te berekenen|zie.?opm|onmeetbaar|n\.?b\.?/i.test(`${ldl.waarde} ${ldl.opmerking || ''}`);
+        if (trigHoog) return pv_r([`slecht cholesterol onmeetbaar hoog (triglyceriden ${pv_g(trig)})`]);
+        return pv_r([onberekenbaar ? 'LDL niet te berekenen' : `LDL ${ldl.waarde}`]);
+    }
     if (ctx.cvrm === 'hvz' && ldl.getal != null) {
         return ldl.getal < PV_LDL_STREEF.hvz.max ? pv_r([], ['cholesterol (op streefwaarde)'])
             : pv_r([`LDL boven streefwaarde (${pv_g(ldl)}; streef < 1,8)`]);
@@ -593,7 +603,7 @@ async function pv_leesBericht(berichtId) {
     if (isLab) {
         if (pv_opties.postverwerkingLab === false) return null;
         const waarden = pv_leesLabWaarden(info.HTML);
-        if (!waarden.length) return null;
+        if (!waarden.length) return pv_leesAlsBrief(berichtId, info); // bv. microbiologie in vrije tekst
         // Alleen als het bericht al aan een patiënt hangt; anders kent de server de patiënt nog niet.
         await pv_koppelVorigeWaarden(waarden, info.GekoppeldePatientId, pv_afnameDatum(info.HTML, info));
         // Afzender van een labuitslag: instelling + afdeling ("Rode Kruis Ziekenhuis, Klinisch Chemisch
@@ -602,6 +612,10 @@ async function pv_leesBericht(berichtId) {
         return { berichtId, soort: 'lab', waarden, geboortedatum: pv_datumNL(info.Patient && info.Patient.GeboorteDatum),
             afzender: pv_afzenderInstelling(pv_instellingUitInfo(info)), opgeslagenContactId: info.TelefoonboekContactId };
     }
+    return pv_leesAlsBrief(berichtId, info);
+}
+
+async function pv_leesAlsBrief(berichtId, info) {
     if (pv_opties.postverwerkingBrief === false) return null;
     const brief = await pv_briefAnalyse(info);
     if (!brief) return null;

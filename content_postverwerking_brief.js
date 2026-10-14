@@ -182,6 +182,70 @@ function pv_specialisme(regels) {
 }
 
 // --- Typen ---------------------------------------------------------------------------------------
+// --- Microbiologie (kweek, PCR/DNA-detectie, SOA) ------------------------------------------------
+// "SOA-test (vagina/cervix): chlamydia aangetoond, gonorroe niet aangetoond. Advies lab: partner(s)
+//  meebehandelen of waarschuwen." Uitslagregels zijn "naam   waarde(voetnoot)" met ruime spaties.
+
+const PV_VERWEKKERS = [
+    [/chlamydia trachomatis/, 'chlamydia', true], [/neisseria gonorr/, 'gonorroe', true],
+    [/trichomonas/, 'trichomonas', true], [/mycoplasma genitalium/, 'Mycoplasma genitalium', true],
+    [/herpes simplex.*(type\s*)?1|hsv.?1/, 'herpes (HSV-1)', true], [/herpes simplex.*(type\s*)?2|hsv.?2/, 'herpes (HSV-2)', true],
+    [/herpes simplex|\bhsv\b/, 'herpes simplex', true], [/treponema|syfilis|\blues\b/, 'syfilis', true],
+    [/\bhiv\b/, 'hiv', true], [/hepatitis b|\bhbv\b|hbsag/, 'hepatitis B', true], [/hepatitis c|\bhcv\b/, 'hepatitis C', true],
+    [/escherichia coli|\be\.?\s?coli\b/, 'E. coli', false], [/klebsiella/, 'Klebsiella', false], [/proteus/, 'Proteus', false],
+    [/enterococ/, 'enterokokken', false], [/staphylococcus aureus/, 'Staphylococcus aureus', false],
+    [/streptococ.*(groep|group)\s*a|pyogenes/, 'groep A-streptokok', false], [/candida/, 'Candida', false]
+];
+
+function pv_verwekker(naam) {
+    const n = pv_norm(naam);
+    const hit = PV_VERWEKKERS.find(([re]) => re.test(n));
+    return hit ? { naam: hit[1], soa: hit[2] } : { naam: naam.replace(/\s+(dna|rna)\b/i, '').trim(), soa: false };
+}
+
+// "pos(1)" → aangetoond, "neg" → niet aangetoond; null als het geen uitslagwaarde is.
+function pv_microUitslag(waarde) {
+    const w = pv_norm(waarde).replace(/\(\d+\)/g, '').trim();
+    if (/^(pos|positief|aangetoond|reactief)\b/.test(w)) return 'aangetoond';
+    if (/^(neg|negatief|niet aangetoond|niet reactief|geen groei)\b/.test(w)) return 'niet aangetoond';
+    return null;
+}
+
+function pv_microbiologie(regels, ruw) {
+    const materiaalRegel = regels.find((x) => /^materiaal\b/i.test(x)) || '';
+    const materiaal = materiaalRegel.replace(/^materiaal\s*:?\s*/i, '').replace(/\(info\)/i, '').trim().toLowerCase();
+    // Uitslagregels "naam   waarde" (twee of meer spaties of tab ertussen).
+    const uitslagen = [];
+    ruw.split('\n').forEach((regel) => {
+        const m = regel.match(/^\s*(.+?)(?:\s{2,}|\t+)(\S.*?)\s*$/);
+        if (!m) return;
+        const uitslag = pv_microUitslag(m[2]);
+        if (!uitslag) return;
+        const v = pv_verwekker(m[1]);
+        if (!uitslagen.some((u) => u.naam === v.naam)) uitslagen.push({ naam: v.naam, soa: v.soa, uitslag });
+    });
+    const pcr = /dna\s*\/?\s*rna|\bpcr\b|detectie/i.test(ruw);
+    const soa = uitslagen.some((u) => u.soa);
+    const titel = soa ? 'SOA-test' : pcr ? 'PCR' : 'Kweek';
+    const aangetoond = uitslagen.filter((u) => u.uitslag === 'aangetoond').map((u) => u.naam);
+    const delen = [];
+    if (uitslagen.length) {
+        // Bij een SOA-test is ook "niet aangetoond" relevant; bij een kweek alleen wat gegroeid is.
+        const tonen = soa || !aangetoond.length ? uitslagen : uitslagen.filter((u) => u.uitslag === 'aangetoond');
+        delen.push(`${titel}${materiaal ? ` (${materiaal})` : ''}: ${tonen.map((u) => `${u.naam} ${u.uitslag}`).join(', ')}.`);
+    } else {
+        // Klassieke kweek zonder "naam  pos/neg"-regels: oude aanpak, opgeschoond.
+        const regelsUit = regels.filter((x) => /\b(groei|kve|cfu|\d+\s*x\s*10)/i.test(x) && x.length < 160).map((x) => x.replace(/\s+/g, ' '));
+        delen.push(`${titel}${materiaal ? ` (${materiaal})` : ''}: ${regelsUit.length ? regelsUit.slice(0, 6).join('; ') : 'zie uitslag'}.`);
+    }
+    const resistentie = regels.filter((x) => /^\s*(amoxicilline|amoxi.?clav|nitrofurantoine|fosfomycine|trimethoprim|cotrimoxazol|ciprofloxacine|cefuroxim|doxycycline|claritromycine|flucloxacilline)\b.*\b[RSI]\b/i.test(x));
+    if (resistentie.length) delen.push('Resistentie: ' + resistentie.map((x) => x.replace(/\s+/g, ' ')).join('; ') + '.');
+    if (aangetoond.length && /partners?\s+(mee\s+te\s+behandelen|meebehandelen|te\s+waarschuwen|waarschuwen)/i.test(ruw.replace(/\s+/g, ' '))) {
+        delen.push('Advies lab: partner(s) meebehandelen of waarschuwen.');
+    }
+    return { delen, aangetoond };
+}
+
 // Volgorde = voorrang (eerste match wint), zoals Dokkie: specifieke typen vóór de algemene brief.
 // type + blokken staan ook in PV_TYPEN_OPTIES (options.js) voor de instellingenpagina: houd gelijk.
 
@@ -309,18 +373,10 @@ const PV_BRIEFTYPEN = [
     },
     {
         type: 'Kweek',
-        blokken: ['Resistentie'],
+        blokken: ['Resistentie', 'Advies lab'],
         test: (t) => /streeklab|microbiolog/.test(t) || /(^|\n)\s*(bacteriologie|virologie|mycologie|parasitologie)\s*(\/|\n|$)/.test(t),
-        maak: (r) => {
-            const materiaal = (r.find((x) => /^materiaal\b/i.test(x)) || '').replace(/^materiaal\s*:?\s*/i, '');
-            // Uitslagregels: positief gaat voor; puur negatieve regels alleen als er niets positiefs is.
-            const uitslag = r.filter((x) => /\b(groei|aangetoond|positief|negatief|pos\b|neg\b|reactief|kve|cfu|\d+\s*x\s*10)/i.test(x) && x.length < 160);
-            const positief = uitslag.filter((x) => !/\b(geen groei|niet aangetoond|negatief|neg\b)/i.test(x));
-            const resistentie = r.filter((x) => /^\s*(amoxicilline|amoxi.?clav|nitrofurantoine|fosfomycine|trimethoprim|cotrimoxazol|ciprofloxacine|cefuroxim|doxycycline|claritromycine|flucloxacilline)\b.*\b[RSI]\b/i.test(x));
-            const regels = (positief.length ? positief : uitslag).slice(0, 6);
-            return ['Kweek' + (materiaal ? ' ' + materiaal : '') + ': ' + (regels.length ? regels.join('; ') : 'zie uitslag') + '.',
-                resistentie.length && 'Resistentie: ' + resistentie.map((x) => x.replace(/\s+/g, ' ')).join('; ') + '.'];
-        }
+        maak: (r, t, ruw) => pv_microbiologie(r, ruw).delen,
+        diagnose: (r, t, ruw) => pv_microbiologie(r, ruw).aangetoond.join(' ')
     },
     {
         type: 'Ambulance',

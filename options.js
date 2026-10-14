@@ -51,7 +51,7 @@ const PV_TYPEN_OPTIES = [
   { type: 'Radiologie', blokken: [] },
   { type: 'Scopie', blokken: ['Indicatie', 'Conclusie', 'Advies'] },
   { type: 'Pathologie', blokken: [] },
-  { type: 'Kweek', blokken: ['Resistentie'] },
+  { type: 'Kweek', blokken: ['Resistentie', 'Advies lab'] },
   { type: 'Operatieverslag', blokken: ['Conclusie', 'Beleid'] },
   { type: 'Waarneembericht', blokken: ['(E)', '(P)'] },
   { type: 'GGZ', blokken: ['Recent', 'Beleid'] },

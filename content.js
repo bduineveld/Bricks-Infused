@@ -848,7 +848,25 @@ function addPdfExportButton() {
 
 // "2015-04-19 Cardioloog": datum van de brief (kop, anders eerste datum in de tekst) en specialisme
 // (kop, anders functie uit de ondertekening of specialisme uit de brief via de postverwerking).
-function pdf_bestandsnaam(berichtContainer, kopDatum, kopSpecialisme) {
+// Soort zorgverlener uit de naam van de organisatie, voor afzenders zonder afdeling of specialisme.
+const PDF_ORGANISATIE_SOORT = [
+    [/fysiotherap/i, 'Fysiotherapeut'],
+    [/oefentherap/i, 'Oefentherapeut'],
+    [/ergotherap/i, 'Ergotherapeut'],
+    [/logopedi/i, 'Logopedist'],
+    [/di[eë]tist/i, 'Diëtist'],
+    [/podo|podotherap/i, 'Podotherapeut'],
+    [/psycholo/i, 'Psycholoog'],
+    [/\bggz\b/i, 'GGZ'],
+    [/apotheek/i, 'Apotheek'],
+    [/huisartsenpost|\bhap\b/i, 'Huisartsenpost'],
+    [/verloskund/i, 'Verloskundige'],
+    [/thuiszorg|wijkverpleging/i, 'Thuiszorg'],
+    [/laboratori|\bsalt\b|\bstar\b/i, 'Laboratorium'],
+    [/jeugdgezondheid|\bjgz\b|consultatiebureau/i, 'JGZ'],
+];
+
+function pdf_bestandsnaam(berichtContainer, kopDatum, kopSpecialisme, kopOrganisatie) {
     const html = berichtContainer && berichtContainer.querySelector ? berichtContainer.querySelector('.bericht-html') : null;
     const tekst = (html && html.innerText) || (berichtContainer && berichtContainer.innerText) || '';
     const datumUit = (t) => {
@@ -857,6 +875,10 @@ function pdf_bestandsnaam(berichtContainer, kopDatum, kopSpecialisme) {
     };
     const datum = datumUit(kopDatum) || datumUit(tekst) || new Date().toISOString().slice(0, 10);
     let spec = String(kopSpecialisme || '').trim();
+    if (!spec && kopOrganisatie) {
+        const soort = PDF_ORGANISATIE_SOORT.find(([re]) => re.test(kopOrganisatie));
+        if (soort) spec = soort[1];
+    }
     if (!spec && typeof pv_regels === 'function') {
         try {
             const regels = pv_regels(tekst);
@@ -892,6 +914,7 @@ function exportBerichtAsPdf(berichtContainer, options) {
         // Voor de bestandsnaam: datum en specialisme uit de kop van het bericht.
         let kopDatum = '';
         let kopSpecialisme = '';
+        let kopOrganisatie = '';
         
         // Haal de header tabel op (berichtsoort-med-kop-container)
         const headerContainer = berichtContainer.querySelector
@@ -929,8 +952,11 @@ function exportBerichtAsPdf(berichtContainer, options) {
                             value = maybeRedact(value);
                             if (label && value) {
                                 data.push({ label, value });
-                                if (!kopDatum && /datum/i.test(label)) kopDatum = value;
-                                if (!kopSpecialisme && /specialisme|specialist|afdeling/i.test(label)) kopSpecialisme = value.split('\n')[0];
+                                // Alleen de berichtdatum ("Datum" onder Overig), niet de geboortedatum van de patiënt.
+                                const patientKolom = /pati[eë]nt/i.test(title);
+                                if (!kopDatum && !patientKolom && /^datum$/i.test(label)) kopDatum = value;
+                                if (!kopSpecialisme && !patientKolom && /specialisme|specialist|afdeling/i.test(label)) kopSpecialisme = value.split('\n')[0];
+                                if (!kopOrganisatie && !patientKolom && /^organisatie$/i.test(label)) kopOrganisatie = value.split('\n')[0];
                             }
                         }
                     });
@@ -1046,7 +1072,7 @@ function exportBerichtAsPdf(berichtContainer, options) {
         
         // Genereer en download PDF
         const suffix = opts.redactBsn ? ' (geen BSN)' : '';
-        const fileName = pdf_bestandsnaam(berichtContainer, kopDatum, kopSpecialisme) + suffix + '.pdf';
+        const fileName = pdf_bestandsnaam(berichtContainer, kopDatum, kopSpecialisme, kopOrganisatie) + suffix + '.pdf';
         doc.save(fileName);
         
         console.log('Brief geëxporteerd als PDF:', fileName);
