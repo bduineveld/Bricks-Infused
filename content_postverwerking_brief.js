@@ -20,6 +20,13 @@ const PV_GROET = /^(met\s+)?(vriendelijke|collegiale|hartelijke)\s+groet|^hoogac
 // Ondertekening/autorisatie: einde van een sectie ("Patholoog: dr. Z", "Beoordeeld door: …").
 const PV_ONDERTEKEND = /^(patholoog|radioloog|arts|specialist|behandelaar|(beoordeeld|geautoriseerd|gevalideerd|gedicteerd|getypt)\s+door)\s*:/i;
 
+// --- Koppelpaneel ------------------------------------------------------------------------------
+// Bricks toont het koppelpaneel rechts (`.koppelinfo.vertical-view`) of onderaan (`.koppelinfo`, in
+// `.widget-berichtdetails.ki-position-bottom`) — een layoutinstelling per gebruiker. Beide ondersteunen.
+function pv_paneel() {
+    return document.querySelector('.koppelinfo.vertical-view') || document.querySelector('.koppelinfo');
+}
+
 // --- Tekst --------------------------------------------------------------------------------------
 
 function pv_htmlNaarTekst(html) {

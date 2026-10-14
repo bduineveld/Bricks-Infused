@@ -649,14 +649,14 @@ async function pv_adresboekAutomatisch(analyse) {
     if (!beste) return;
     // Bricks bouwt het paneel na het koppelen van een patiënt opnieuw op; even laten bijkomen.
     await new Promise((r) => setTimeout(r, 800));
-    const pane = document.querySelector('.koppelinfo.vertical-view');
+    const pane = pv_paneel();
     if (!pane || pv_berichtIdUitUrl() !== analyse.berichtId || !pv_adresboekVervangbaar(pane, analyse)) return;
     if (pv_norm(pv_adresboekHuidig(pane)) === pv_norm(beste.naam)) return;
     pv_adresboekPogingen.set(analyse.berichtId, pogingen + 1);
     const ok = await pv_kiesAdresboek(analyse.adresboek.query, beste, true);
     if (ok) pv_adresboekPogingen.set(analyse.berichtId, 99);
-    const paneNu = document.querySelector('.koppelinfo.vertical-view');
-    const regel = paneNu && paneNu.querySelector('.' + PV_CARD_CLASS + ' .bi-pv-adresboek');
+    const paneNu = pv_paneel();
+    const regel = document.querySelector('.' + PV_CARD_CLASS + ' .bi-pv-adresboek');
     if (regel) {
         regel.textContent = ok ? `✓ Geadresseerde ingevuld: ${beste.naam} (herkend uit "${analyse.afzender.tekst}"; controleer en sla op)`
             : `Geadresseerde "${beste.naam}" kon niet automatisch worden ingevuld; kies via het vergrootglas.`;
@@ -674,12 +674,129 @@ function pv_knop(tekst, primair) {
     return b;
 }
 
+// --- Zwevend paneel -----------------------------------------------------------------------------------
+// De kaart zweeft over de brief, aangemeerd tegen het koppelpaneel, zodat hij de samenvatting van Bricks
+// nooit uit beeld duwt. De greep ("Infused") schuift het paneel weg naar het koppelpaneel toe of terug;
+// die stand wordt onthouden.
+//   - Koppelpaneel rechts (`.koppelinfo.vertical-view`): rechterkant tegen de linkerrand van het
+//     koppelpaneel, onderkant gelijk met de onderkant van het samenvattingsvak.
+//   - Koppelpaneel onderaan (`.koppelinfo`, `.ki-position-bottom`): onderkant op de (versleepbare)
+//     scheidingslijn, rechterkant op de rand van het berichtblok.
+// Hoogte = zo hoog als het voorstel; alleen bij te weinig ruimte (tot onder de kop "Bericht") scrollen.
+
+const PV_ZWEEF_ID = 'bi-pv-zweef';
+// Standaard uitgeklapt; ingeklapt blijft het alleen zolang je bij hetzelfde bericht bent.
+let pv_zweefDicht = false;
+let pv_zweefBericht = null;
+
+function pv_isZwevend(pane) {
+    return !pane.classList.contains('vertical-view');
+}
+
+function pv_zweefStand() {
+    const z = document.getElementById(PV_ZWEEF_ID);
+    if (!z) return;
+    const inhoud = z.querySelector('.bi-pv-zweef-inhoud');
+    const pijl = z.querySelector('.bi-pv-zweef-pijl');
+    inhoud.style.width = pv_zweefDicht ? '0' : '360px';
+    inhoud.style.padding = pv_zweefDicht ? '0' : '8px';
+    pijl.textContent = pv_zweefDicht ? '«' : '»';
+    z.querySelector('.bi-pv-zweef-greep').title = pv_zweefDicht ? 'Infused-voorstel tonen' : 'Infused-voorstel wegschuiven';
+}
+
+function pv_zweefPositie() {
+    const z = document.getElementById(PV_ZWEEF_ID);
+    const widget = document.querySelector('.widget-berichtdetails');
+    const pane = pv_paneel();
+    if (!z || !widget || !pane) return;
+    const w = widget.getBoundingClientRect();
+    let onder;
+    let rechts;
+    if (!pv_isZwevend(pane)) {
+        // Koppelpaneel rechts: naast het samenvattingsvak, tegen de rand van het koppelpaneel.
+        const vak = pane.querySelector('textarea.samenvatting');
+        const blok = vak && (vak.closest('.koppelinfo-input-container') || vak);
+        onder = Math.round(blok ? blok.getBoundingClientRect().bottom : w.bottom - 8);
+        rechts = Math.round(pane.getBoundingClientRect().left) - 6;
+    } else {
+        const lijn = widget.querySelector('.bericht-resizebar');
+        onder = Math.round(lijn ? lijn.getBoundingClientRect().top : w.bottom - 8);
+        rechts = Math.round(w.right);
+    }
+    const ruimte = Math.max(120, onder - Math.round(w.top + 28));
+    z.style.top = 'auto';
+    z.style.bottom = Math.max(0, window.innerHeight - onder) + 'px';
+    z.style.right = Math.max(0, window.innerWidth - rechts) + 'px';
+    z.style.maxHeight = ruimte + 'px';
+    const inhoud = z.querySelector('.bi-pv-zweef-inhoud');
+    inhoud.style.height = 'auto';
+    inhoud.style.maxHeight = ruimte + 'px';
+}
+
+// Meebewegen met versleepbare lijnen (brief/koppelpaneel, episodelijst/samenvatting) en vensterformaat.
+let pv_zweefObserver = null;
+function pv_volgBriefzone() {
+    const details = document.querySelector('.widget-berichtdetails .berichtdetails') || document.querySelector('.widget-berichtdetails');
+    const pane = pv_paneel();
+    if (!details || (pv_zweefObserver && pv_zweefObserver.__details === details && pv_zweefObserver.__pane === pane)) return;
+    if (pv_zweefObserver) pv_zweefObserver.disconnect();
+    pv_zweefObserver = new ResizeObserver(() => pv_zweefPositie());
+    pv_zweefObserver.__details = details;
+    pv_zweefObserver.__pane = pane;
+    pv_zweefObserver.observe(details);
+    if (pane) {
+        pv_zweefObserver.observe(pane);
+        const vak = pane.querySelector('textarea.samenvatting');
+        if (vak) pv_zweefObserver.observe(vak);
+    }
+}
+window.addEventListener('resize', () => pv_zweefPositie());
+
+function pv_zweefPaneel() {
+    let z = document.getElementById(PV_ZWEEF_ID);
+    if (z) {
+        pv_volgBriefzone();
+        pv_zweefPositie();
+        return z;
+    }
+    z = document.createElement('div');
+    z.id = PV_ZWEEF_ID;
+    // Onder Bricks' eigen vensters blijven: .modal-container heeft z-index 50 (instellingen, adresboek, …).
+    z.style.cssText = 'position:fixed;top:96px;right:0;z-index:40;display:flex;align-items:flex-end;'
+        + 'max-height:calc(100vh - 190px);filter:drop-shadow(0 4px 12px rgba(0,0,0,0.18));';
+    const greep = document.createElement('div');
+    greep.className = 'bi-pv-zweef-greep';
+    greep.style.cssText = 'cursor:pointer;background:#2f855a;color:#fff;border-radius:8px 0 0 8px;padding:10px 4px;'
+        + 'display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;font-weight:600;user-select:none;';
+    greep.innerHTML = '<span class="bi-pv-zweef-pijl" style="font-size:14px;line-height:1;"></span>'
+        + '<span style="writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:0.05em;">Infused</span>';
+    greep.addEventListener('click', () => {
+        pv_zweefDicht = !pv_zweefDicht;
+        pv_zweefStand();
+    });
+    const inhoud = document.createElement('div');
+    inhoud.className = 'bi-pv-zweef-inhoud';
+    inhoud.style.cssText = 'background:#fff;overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 190px);'
+        + 'box-sizing:border-box;transition:width 0.2s ease;';
+    z.appendChild(greep);
+    z.appendChild(inhoud);
+    document.body.appendChild(z);
+    pv_zweefStand();
+    pv_volgBriefzone();
+    pv_zweefPositie();
+    return z;
+}
+
+function pv_verwijderKaart() {
+    document.querySelectorAll('.' + PV_CARD_CLASS).forEach((n) => n.remove());
+    const z = document.getElementById(PV_ZWEEF_ID);
+    if (z) z.remove();
+    if (pv_zweefObserver) { pv_zweefObserver.disconnect(); pv_zweefObserver = null; }
+}
+
 function pv_toonKaart(pane, analyse) {
     const ta = pane.querySelector('textarea.samenvatting');
     if (!ta) return null;
-    // Vóór het samenvattingsblok. Dat is een grid (tekst + pictogrammen); binnen die grid
-    // zou de kaart een eigen cel krijgen en de layout verschuiven.
-    const blok = ta.closest('.koppelinfo-tekst') || ta;
 
     const kaart = document.createElement('div');
     kaart.className = PV_CARD_CLASS;
@@ -695,7 +812,7 @@ function pv_toonKaart(pane, analyse) {
     sluit.style.cssText = 'cursor:pointer;color:#888;font-size:1.2em;padding:0 4px;';
     sluit.addEventListener('click', () => {
         pv_verborgen = kaart.dataset.sleutel || null;
-        kaart.remove();
+        pv_verwijderKaart();
     });
     kop.appendChild(sluit);
     kaart.appendChild(kop);
@@ -771,7 +888,19 @@ function pv_toonKaart(pane, analyse) {
     voet.style.cssText = 'margin-top:6px;color:#888;font-size:0.85em;';
     kaart.appendChild(voet);
 
-    blok.parentElement.insertBefore(kaart, blok);
+    // Nieuw bericht → paneel weer uitgeklapt.
+    if (pv_zweefBericht !== analyse.berichtId) {
+        pv_zweefBericht = analyse.berichtId;
+        pv_zweefDicht = false;
+    }
+    // Altijd in het zwevende paneel (in beide layouts), zodat de samenvatting zichtbaar blijft.
+    kaart.style.margin = '0';
+    kaart.style.gridColumn = '';
+    const inhoud = pv_zweefPaneel().querySelector('.bi-pv-zweef-inhoud');
+    inhoud.innerHTML = '';
+    inhoud.appendChild(kaart);
+    pv_zweefStand();
+    pv_zweefPositie();
     return kaart;
 }
 
@@ -790,11 +919,15 @@ function pv_berichtLaden(berichtId) {
 async function pv_check() {
     if (pv_bezig) return;
     const berichtId = pv_berichtIdUitUrl();
-    const pane = document.querySelector('.koppelinfo.vertical-view');
-    if (!berichtId || !pane) return;
+    const pane = pv_paneel();
+    if (!berichtId || !pane) {
+        pv_verwijderKaart();
+        return;
+    }
     // Nog geen patiënt gekozen: Bricks toont dan geen samenvatting (dus geen kaart), maar de
     // geadresseerde staat los van de patiënt en kan al wel worden ingevuld.
     if (!pane.querySelector('textarea.samenvatting')) {
+        pv_verwijderKaart();
         if (pv_adresboekPogingen.get(berichtId) >= 2) return;
         pv_bezig = true;
         try {
@@ -812,8 +945,14 @@ async function pv_check() {
 
     // Opnieuw tekenen als bericht of episodelijst (= gekozen patiënt) verandert.
     const sleutel = berichtId + '|' + pv_leesEpisodes(pane).map((e) => e.code).join(',');
-    const bestaand = pane.querySelector('.' + PV_CARD_CLASS);
-    if (bestaand && bestaand.dataset.sleutel === sleutel) return;
+    const bestaand = document.querySelector('.' + PV_CARD_CLASS);
+    // Zelfde bericht, zelfde episodes en de kaart staat in het zwevende paneel: positie bijwerken (layout kan wisselen).
+    const goedePlek = bestaand && !!bestaand.closest('#' + PV_ZWEEF_ID);
+    if (bestaand && bestaand.dataset.sleutel === sleutel && goedePlek) {
+        pv_volgBriefzone();
+        pv_zweefPositie();
+        return;
+    }
     if (pv_verborgen === sleutel) return;
 
     pv_bezig = true;
@@ -821,9 +960,9 @@ async function pv_check() {
         const bericht = await pv_berichtLaden(berichtId);
         // Intussen naar een ander bericht gegaan?
         if (pv_berichtIdUitUrl() !== berichtId) return;
-        const paneNu = document.querySelector('.koppelinfo.vertical-view');
+        const paneNu = pv_paneel();
         if (!paneNu) return;
-        paneNu.querySelectorAll('.' + PV_CARD_CLASS).forEach((n) => n.remove());
+        pv_verwijderKaart();
         if (!bericht) return;
         const episodes = pv_leesEpisodes(paneNu);
         const analyse = pv_analyseer(bericht, episodes);
@@ -852,7 +991,7 @@ loadGlobalOptions(function (options) {
         Object.keys(changes).forEach((k) => { pv_opties[k] = changes[k].newValue; });
         pv_berichtCache.clear();
         pv_verborgen = null;
-        document.querySelectorAll('.' + PV_CARD_CLASS).forEach((n) => n.remove());
+        pv_verwijderKaart();
         pv_check();
     });
     pv_check();

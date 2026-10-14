@@ -177,6 +177,46 @@ function sendToZorgdomeinInfused(payload, sendResponse) {
   });
 }
 
+// =============================================================================
+// Na een update opnieuw actief in open tabbladen (zonder verversen).
+// -----------------------------------------------------------------------------
+// Bij een update koppelt de browser de content scripts in open tabbladen los; Infused lijkt dan
+// "dood" tot de gebruiker ververst (wat je op een werkdag niet doet). Daarom zetten we na install/
+// update de content scripts uit de manifest opnieuw in alle open tabbladen die erbij passen.
+// - MAIN-world (bridge_main.js) heeft een eigen guard (__installed) en blijft de oude instantie
+//   gebruiken: die heeft Bricks' API al gevangen bij het laden van de pagina.
+// - De oude, losgekoppelde isolated-world scripts leggen zichzelf stil via content_guard.js.
+// =============================================================================
+async function herinjecteerContentScripts() {
+  const scripts = (chrome.runtime.getManifest().content_scripts || []);
+  for (const cs of scripts) {
+    let tabs = [];
+    try {
+      tabs = await chrome.tabs.query({ url: cs.matches });
+    } catch (e) {
+      continue;
+    }
+    for (const tab of tabs) {
+      if (!tab.id || tab.discarded) continue;
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id, allFrames: !!cs.all_frames },
+          files: cs.js,
+          world: cs.world === 'MAIN' ? 'MAIN' : 'ISOLATED'
+        });
+      } catch (e) {
+        console.warn('Herinjecteren mislukt voor tab', tab.id, e && e.message);
+      }
+    }
+  }
+}
+
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'update' || details.reason === 'install') {
+    herinjecteerContentScripts();
+  }
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message && message.type === 'getDefaults') {
     sendResponse({ defaultOptions });

@@ -167,7 +167,7 @@ async function pv_wacht(fn, ms) {
 // Er is geen API die alleen de geadresseerde in het formulier zet (Bericht.BerichtOpslaan slaat alles
 // op), dus via het venster. Met `onzichtbaar` staat het venster op doorzichtig zolang Infused het bedient.
 async function pv_kiesAdresboek(query, kandidaat, onzichtbaar) {
-    const pane = document.querySelector('.koppelinfo.vertical-view');
+    const pane = pv_paneel();
     const icoon = pane && pane.querySelector('.koppelinfo-contact .picker-icon .fa-search');
     if (!icoon) return false;
     let verberg = null;
@@ -206,7 +206,7 @@ async function pv_kiesAdresboek(query, kandidaat, onzichtbaar) {
         if (!selecteer) { annuleer(); return false; }
         selecteer.click();
         return !!(await pv_wacht(() => {
-            const p = document.querySelector('.koppelinfo.vertical-view');
+            const p = pv_paneel();
             return p && pv_adresboekHuidig(p);
         }));
     } finally {
@@ -217,7 +217,7 @@ async function pv_kiesAdresboek(query, kandidaat, onzichtbaar) {
 // Opent Bricks' venster → "Nieuw" en vult het formulier alvast in met de afzender uit de brief.
 // Het venster blijft zichtbaar: de huisarts controleert, vult eventueel Organisatie in en slaat zelf op.
 async function pv_nieuwContact(afzender) {
-    const pane = document.querySelector('.koppelinfo.vertical-view');
+    const pane = pv_paneel();
     const icoon = pane && pane.querySelector('.koppelinfo-contact .picker-icon .fa-search');
     if (!icoon) return false;
     icoon.click();
