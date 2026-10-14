@@ -25,7 +25,7 @@ const PV_LDL_STREEF = {
 };
 
 // Bepalingen die niet los in de samenvatting horen (komen terug via een groepsregel of zeggen weinig).
-const PV_NEGEER = /hematocriet|erytrocyt|\bm\.?c\.?h\b|\bm\.?c\.?h\.?c\b|\brdw\b|distribution width|creatinine.*urine|albumine.*urine.*portie|cholesterol|\bhdl\b|triglycerid|chol\/hdl/;
+const PV_NEGEER = /hematocriet|erytrocyt(?!.*(urine|sediment))|\bm\.?c\.?h\b|\bm\.?c\.?h\.?c\b|\brdw\b|distribution width|creatinine.*urine|albumine.*urine.*portie|cholesterol|\bhdl\b|triglycerid|chol\/hdl/;
 
 const PV_PATRONEN = {
     tsh: /\btsh\b|thyro?id.*stimul|schildklier.*stimul/,
@@ -42,7 +42,11 @@ const PV_PATRONEN = {
     ferritine: /ferritine/,
     crp: /\bcrp\b|c-reacti/,
     bse: /\bbse\b|bezinking/,
-    leuko: /leukocyt/,
+    leuko: /leukocyt(?!.*(urine|sediment))/,
+    // Urinesediment
+    eryUrine: /erytrocyt.*(urine|sediment)(?!.*dysmorf)/,
+    dysmorf: /dysmorf/,
+    leukoUrine: /leukocyt.*(urine|sediment)/,
     asat: /\basat\b|\bgot\b/,
     alat: /\balat\b|\bgpt\b/,
     ggt: /gamma.?gt|\bggt\b|γ.?gt/,
@@ -117,7 +121,9 @@ function pv_leesLabWaarden(html) {
                 min: pv_getal(cel(iMin)),
                 max: pv_getal(cel(iMax)),
                 opmerking: cel(iOpm),
+                // Afwijkend: rood gekleurde waarde, of een "*" in de vlagkolom (sommige labs).
                 labVlag: !!(waardeCel && waardeCel.classList.contains('communicatie-afwijkend'))
+                    || Array.from(rij.cells).some((c) => c.textContent.trim() === '*')
             };
             w.status = pv_status(w);
             waarden.push(w);
@@ -343,16 +349,20 @@ function pv_regelBloedbeeld(waarden) {
 
 const PV_KORTE_NAAM = { crp: 'CRP', bse: 'BSE', leuko: 'leukocyten', asat: 'ASAT', alat: 'ALAT', ggt: 'GGT', af: 'AF' };
 
-function pv_regelGroep(waarden, sleutels, afwTekst, normLabel) {
+// marge: { sleutel: n } — tot n punten boven de bovengrens telt nog als normaal.
+function pv_regelGroep(waarden, sleutels, afwTekst, normLabel, marge) {
     const delen = sleutels.map((k) => ({ k, w: pv_pak(waarden, k) })).filter((d) => d.w);
     if (!delen.length) return pv_r();
-    const afw = delen.filter((d) => d.w.status === 'verhoogd' || d.w.status === 'verlaagd');
+    const binnenMarge = (d) => marge && marge[d.k] != null && d.w.status === 'verhoogd'
+        && d.w.getal != null && d.w.max != null && d.w.getal <= d.w.max + marge[d.k];
+    const afw = delen.filter((d) => (d.w.status === 'verhoogd' || d.w.status === 'verlaagd') && !binnenMarge(d));
     if (!afw.length) return pv_r([], [normLabel]);
     return pv_r([`${afwTekst} (${afw.map((d) => `${PV_KORTE_NAAM[d.k]} ${pv_g(d.w)}`).join(', ')})`]);
 }
 
 function pv_regelOntsteking(waarden) {
-    return pv_regelGroep(waarden, ['crp', 'bse', 'leuko'], 'verhoogde ontstekingswaarden', 'ontstekingswaarden');
+    // CRP en BSE: tot 5 punten boven de bovengrens nog niet als afwijkend noemen (afgesproken 14-10-2026).
+    return pv_regelGroep(waarden, ['crp', 'bse', 'leuko'], 'verhoogde ontstekingswaarden', 'ontstekingswaarden', { crp: 5, bse: 5 });
 }
 
 function pv_regelLever(waarden) {
@@ -390,6 +400,105 @@ function pv_regelLdl(waarden, ctx) {
     return pv_r([], ['cholesterol']);
 }
 
+// Urinesediment: erytrocyten + % dysmorfe erytrocyten (afgesproken 14-10-2026):
+//   ≤ 40% dysmorf: bloed waarschijnlijk niet uit de nieren (maar bijv. uit de blaas)
+//   > 40%:         bloed mogelijk uit de nieren
+//   > 80%:         bloed waarschijnlijk uit de nieren
+function pv_dysmorfDuiding(pct) {
+    if (pct > 80) return 'bloed waarschijnlijk uit de nieren';
+    if (pct > 40) return 'bloed mogelijk uit de nieren';
+    return 'bloed waarschijnlijk niet uit de nieren (maar bijv. uit de blaas)';
+}
+
+function pv_regelUrine(waarden) {
+    const dys = pv_pak(waarden, 'dysmorf');
+    const ery = pv_pak(waarden, 'eryUrine');
+    const leu = pv_pak(waarden, 'leukoUrine');
+    if (!dys && !ery && !leu) return pv_r();
+    const afw = [];
+    const isAfw = (w) => w && (w.status === 'verhoogd' || w.status === 'afwijkend' || (w.labVlag && w.status !== 'verlaagd'));
+    const pct = dys && dys.getal != null ? dys.getal : null;
+    if (isAfw(ery)) {
+        afw.push(`bloed in de urine (ery's ${pv_g(ery)}/uL)` + (pct != null ? `, ${pv_g(dys)}% dysmorf: ${pv_dysmorfDuiding(pct)}` : ''));
+    } else if (pct != null && pct > 40) {
+        afw.push(`${pv_g(dys)}% dysmorfe ery's in de urine: ${pv_dysmorfDuiding(pct)}`);
+    }
+    if (isAfw(leu)) afw.push(`leukocyten in de urine (${pv_g(leu)}/uL)`);
+    return pv_r(afw, afw.length ? [] : ['urinesediment']);
+}
+
+// --- Allergietest (specifiek IgE) ----------------------------------------------------------
+// Klassen (afgesproken 14-10-2026): <0,35 negatief; 0,35–0,69 zwak; 0,70–3,49 matig; 3,50–17,49 sterk;
+// 17,50–49,99 zeer sterk; 50–100 zeer hoog; >100 extreem hoog positief.
+// "Allergietest: matig positief voor huisstofmijt, negatief voor katten, honden en graspollen."
+const PV_IGE_KLASSEN = [
+    [100, 'extreem hoog positief'], [50, 'zeer hoog positief'], [17.5, 'zeer sterk positief'],
+    [3.5, 'sterk positief'], [0.7, 'matig positief'], [0.35, 'zwak positief']
+];
+// Allergeen → gewone naam: op lab-code (e1, d1, gx3, …) of op woorden in de naam.
+const PV_ALLERGEEN_CODES = {
+    e1: 'katten', e2: 'honden', e3: 'paarden', e5: 'honden', e82: 'konijnen', e6: 'cavia\'s',
+    d1: 'huisstofmijt', d2: 'huisstofmijt', gx3: 'graspollen', g6: 'graspollen (timotheegras)',
+    tx9: 'boompollen', t3: 'berkenpollen', t2: 'elzenpollen', t4: 'hazelaarpollen',
+    wx3: 'kruidpollen', w6: 'bijvoet', w1: 'ambrosia', mx1: 'schimmels', m2: 'schimmels (Cladosporium)',
+    m3: 'schimmels (Aspergillus)', m6: 'schimmels (Alternaria)', f1: 'kippenei-eiwit', f2: 'koemelk',
+    f13: 'pinda', f14: 'soja', f17: 'hazelnoot', f3: 'vis', f24: 'garnaal', i1: 'bijengif', i3: 'wespengif'
+};
+const PV_ALLERGEEN_WOORDEN = [
+    [/dermatophag|huisstofmijt/, 'huisstofmijt'], [/\bhond/, 'honden'], [/\bkat\b|\bkatten/, 'katten'],
+    [/\bpaard/, 'paarden'], [/graspollen|timothee/, 'graspollen'], [/boompollen/, 'boompollen'], [/\bberk/, 'berkenpollen'],
+    [/kruidpollen/, 'kruidpollen'], [/bijvoet/, 'bijvoet'], [/schimmel|alternaria|cladosporium|aspergillus/, 'schimmels'],
+    [/pinda/, 'pinda'], [/kippenei|\bei\b/, 'kippenei'], [/melk/, 'koemelk']
+];
+
+function pv_isAllergeen(w) {
+    return /^as\.?\s/.test(w.sleutel) || /\bige\b.*specifiek|specifiek.*\bige\b/.test(w.sleutel);
+}
+
+function pv_allergeenNaam(w) {
+    const code = (w.sleutel.match(/\b([a-z]{1,2}x?\d{1,3})\s*$/) || [])[1];
+    if (code && PV_ALLERGEEN_CODES[code]) return PV_ALLERGEEN_CODES[code];
+    const hit = PV_ALLERGEEN_WOORDEN.find(([re]) => re.test(w.sleutel));
+    if (hit) return hit[1];
+    return w.naam.replace(/^as\.?\s*/i, '').replace(/\s+[a-z]{1,2}x?\d{1,3}\s*$/i, '').replace(/^mengsel\s+/i, '').trim();
+}
+
+function pv_igeKlasse(waarde) {
+    const k = PV_IGE_KLASSEN.find(([grens]) => waarde >= grens);
+    return k ? k[1] : 'negatief';
+}
+
+// "a, b en c"
+function pv_opsomming(lijst) {
+    return lijst.length <= 1 ? (lijst[0] || '') : lijst.slice(0, -1).join(', ') + ' en ' + lijst[lijst.length - 1];
+}
+
+function pv_regelAllergie(waarden) {
+    const screening = waarden.find((w) => !w.gebruikt && /phadiatop|multi.?rast/.test(w.sleutel));
+    if (screening) screening.gebruikt = true;
+    const allergenen = waarden.filter((w) => !w.gebruikt && pv_isAllergeen(w));
+    allergenen.forEach((w) => { w.gebruikt = true; });
+    if (!screening && !allergenen.length) return pv_r();
+
+    // Per klasse de allergenen verzamelen (dubbele namen samenvoegen, hoogste klasse wint).
+    const perNaam = new Map();
+    allergenen.forEach((w) => {
+        if (w.getal == null) return;
+        const naam = pv_allergeenNaam(w);
+        const oud = perNaam.get(naam);
+        if (oud == null || w.getal > oud) perNaam.set(naam, w.getal);
+    });
+    const volgorde = PV_IGE_KLASSEN.map(([, k]) => k).concat(['negatief']);
+    const perKlasse = {};
+    perNaam.forEach((waarde, naam) => { (perKlasse[pv_igeKlasse(waarde)] = perKlasse[pv_igeKlasse(waarde)] || []).push(naam); });
+    const delen = volgorde.filter((k) => perKlasse[k]).map((k) => `${k} voor ${pv_opsomming(perKlasse[k])}`);
+
+    if (!delen.length && screening) {
+        return pv_r([`allergiescreening (Phadiatop) ${/pos/.test(pv_norm(screening.waarde)) ? 'positief' : 'negatief'}`]);
+    }
+    return pv_r([`allergietest: ${delen.join(', ')}`]);
+}
+
 function pv_regelOverig(waarden) {
     const afw = [];
     waarden.forEach((w) => {
@@ -412,6 +521,8 @@ function pv_maakLabSamenvatting(waarden, ctx) {
         pv_regelOntsteking(waarden),
         pv_regelLever(waarden),
         pv_regelVitamines(waarden),
+        pv_regelUrine(waarden),
+        pv_regelAllergie(waarden),
         pv_regelOverig(waarden)
     ];
     const afw = delen.flatMap((d) => d.afw);
@@ -485,7 +596,11 @@ async function pv_leesBericht(berichtId) {
         if (!waarden.length) return null;
         // Alleen als het bericht al aan een patiënt hangt; anders kent de server de patiënt nog niet.
         await pv_koppelVorigeWaarden(waarden, info.GekoppeldePatientId, pv_afnameDatum(info.HTML, info));
-        return { berichtId, soort: 'lab', waarden, geboortedatum: pv_datumNL(info.Patient && info.Patient.GeboorteDatum) };
+        // Afzender van een labuitslag: instelling + afdeling ("Rode Kruis Ziekenhuis, Klinisch Chemisch
+        // Laboratorium" → "!Laboratorium RKZ"). Bricks vult vaak zelf al een contact in; een opgeslagen
+        // contact wordt nooit overschreven.
+        return { berichtId, soort: 'lab', waarden, geboortedatum: pv_datumNL(info.Patient && info.Patient.GeboorteDatum),
+            afzender: pv_afzenderInstelling(pv_instellingUitInfo(info)), opgeslagenContactId: info.TelefoonboekContactId };
     }
     if (pv_opties.postverwerkingBrief === false) return null;
     const brief = await pv_briefAnalyse(info);
@@ -530,7 +645,10 @@ function pv_analyseer(bericht, episodes) {
         nieuw: [],
         samenvatting: pv_maakLabSamenvatting(bericht.waarden.map((w) => Object.assign({}, w)), ctx),
         voorstellen: pv_episodeVoorstellen(bericht.waarden, episodes),
-        heeftPatient: episodes.length > 0
+        heeftPatient: episodes.length > 0,
+        afzender: bericht.afzender,
+        adresboek: bericht.adresboek,
+        opgeslagenContactId: bericht.opgeslagenContactId
     };
 }
 
@@ -605,7 +723,7 @@ function pv_afdelingKnop(regel, analyse, beste) {
     if (!a || a.soort !== 'instelling' || !a.instelling || !a.instelling.afdeling) return;
     if (beste && beste.afdeling) return;
     regel.appendChild(document.createTextNode(' '));
-    regel.appendChild(pv_nieuwContactKnop(a, `Nieuw contact: ${a.tekst}`));
+    regel.appendChild(pv_nieuwContactKnop(a, `Nieuw contact: ${a.tekst}`, analyse));
 }
 
 // Mag Infused het huidige adresboekcontact vervangen? Ja als het leeg is, of als het Bricks' eigen
@@ -617,14 +735,40 @@ function pv_adresboekVervangbaar(pane, analyse) {
     return !(analyse.opgeslagenContactId > 0) && !!inst && pv_norm(huidig) === pv_norm(inst.naam);
 }
 
-function pv_nieuwContactKnop(afzender, tekst) {
+// Na "Nieuw contact aanmaken": wacht tot het formulier dicht is (opgeslagen of geannuleerd), zoek
+// opnieuw en vervang de knop door "Toewijzen: <naam>". Staat Bricks' zoeklijst nog open, dan zet
+// Infused de naam erin zodat het nieuwe contact er direct staat.
+function pv_nieuwContactKnop(afzender, tekst, analyse) {
     const b = pv_knop(tekst || 'Nieuw contact aanmaken', false);
     b.title = 'Opent het venster van Bricks met de afzender alvast ingevuld; controleer en sla zelf op.';
     b.addEventListener('click', async () => {
         if (!(await pv_nieuwContact(afzender))) {
             b.title = 'Lukte niet — maak het contact zelf aan via het vergrootglas → Nieuw.';
             b.style.borderColor = '#c53030';
+            return;
         }
+        const formulierOpen = () => Array.from(document.querySelectorAll('.modal-dialog')).some((d) => /journaalkoptekst/i.test(d.textContent));
+        await pv_wacht(() => !formulierOpen(), 10 * 60 * 1000);
+        const ab = await pv_adresboekKandidaten(afzender);
+        const beste = pv_adresboekBeste(ab.kandidaten);
+        if (!beste) return; // geannuleerd of (nog) niet te vinden
+        if (analyse) analyse.adresboek = ab;
+        const lijst = Array.from(document.querySelectorAll('.modal-dialog')).find((d) => /selecteer contact/i.test(d.textContent));
+        const zoekveld = lijst && lijst.querySelector('input');
+        if (zoekveld && !zoekveld.value) {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(zoekveld, beste.query || ab.query);
+            zoekveld.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        const toewijzen = pv_knop('Toewijzen: ' + beste.naam, true);
+        toewijzen.title = 'Kies dit nieuwe contact als geadresseerde (via het venster van Bricks).';
+        toewijzen.addEventListener('click', async () => {
+            toewijzen.disabled = true;
+            const ok = await pv_kiesAdresboek(ab.query, beste, false);
+            toewijzen.disabled = false;
+            if (ok) toewijzen.textContent = '✓ ' + beste.naam;
+            else { toewijzen.title = 'Lukte niet — kies het contact zelf via het vergrootglas.'; toewijzen.style.borderColor = '#c53030'; }
+        });
+        b.replaceWith(toewijzen);
     });
     return b;
 }
@@ -645,7 +789,7 @@ function pv_toonAdresboekRegel(kaart, pane, analyse) {
     }
     if (!ab.kandidaten.length) {
         regel.textContent = `"${analyse.afzender.tekst}" staat niet in het adresboek` + (huidig ? ` (nu: ${huidig}). ` : '. ');
-        regel.appendChild(pv_nieuwContactKnop(analyse.afzender));
+        regel.appendChild(pv_nieuwContactKnop(analyse.afzender, null, analyse));
         return;
     }
     regel.textContent = beste ? 'Geadresseerde:' : `Meerdere contacten passen bij "${analyse.afzender.tekst}":`;
@@ -954,7 +1098,8 @@ async function pv_check() {
         pv_bezig = true;
         try {
             const bericht = await pv_berichtLaden(berichtId);
-            if (bericht && bericht.soort === 'brief' && pv_berichtIdUitUrl() === berichtId) {
+            if (bericht && bericht.afzender && pv_berichtIdUitUrl() === berichtId) {
+                if (bericht.afzender) bericht.adresboek = await pv_adresboekKandidaten(bericht.afzender);
                 await pv_adresboekAutomatisch(Object.assign({ berichtId, opgeslagenContactId: bericht.opgeslagenContactId }, bericht));
             }
         } catch (e) {
@@ -986,11 +1131,17 @@ async function pv_check() {
         if (!paneNu) return;
         pv_verwijderKaart();
         if (!bericht) return;
+        // Adresboek altijd opnieuw doorzoeken (niet uit de cache): intussen kan er een contact zijn
+        // aangemaakt of verwijderd — anders vond Infused een net aangemaakt contact pas na verversen.
+        if (bericht.afzender) {
+            bericht.adresboek = await pv_adresboekKandidaten(bericht.afzender);
+            if (pv_berichtIdUitUrl() !== berichtId) return;
+        }
         const episodes = pv_leesEpisodes(paneNu);
         const analyse = pv_analyseer(bericht, episodes);
         const kaart = pv_toonKaart(paneNu, analyse);
         if (kaart) kaart.dataset.sleutel = berichtId + '|' + episodes.map((e) => e.code).join(',');
-        if (kaart && bericht.soort === 'brief') {
+        if (kaart && bericht.afzender) {
             pv_adresboekAutomatisch(analyse).catch((e) => console.warn('Postverwerking: adresboek invullen mislukt', e));
         }
     } finally {

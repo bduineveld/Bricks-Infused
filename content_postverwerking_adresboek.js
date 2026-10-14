@@ -89,6 +89,8 @@ const PV_SPECIALISMEN_ADRES = [
     { termen: ['revalidatiearts', 'revalidatiegeneeskunde', 'revalidatie'], code: 'REV' },
     { termen: ['radioloog', 'radiologie'], code: 'RAD' },
     { termen: ['patholoog', 'pathologie'], code: 'PAT' },
+    { termen: ['klinisch chemisch laboratorium', 'klinische chemie', 'klinisch chemicus', 'laboratorium', 'lab'], code: 'LAB' },
+    { termen: ['medische microbiologie', 'microbiologie', 'arts-microbioloog', 'microbioloog'], code: 'MMB' },
     { termen: ['anesthesioloog', 'anesthesiologie'], code: 'ANE' },
     { termen: ['chirurg', 'chirurgie'], code: 'CHI' }
 ];
@@ -104,6 +106,8 @@ function pv_specialismeVan(tekst, code) {
 // zonder ondertekening door een persoon (radiologie, kweek, PA) of als er geen persoon te vinden is.
 function pv_afzenderInstelling(inst) {
     if (!inst || !inst.naam) return null;
+    // Afdeling gelijk aan de instelling ("DagoLab - DagoLab") niet dubbel noemen.
+    if (inst.afdeling && pv_norm(inst.afdeling) === pv_norm(inst.naam)) inst = Object.assign({}, inst, { afdeling: '' });
     const tekst = inst.naam + (inst.afdeling ? ', ' + inst.afdeling : '');
     return { soort: 'instelling', tekst, naamDeel: tekst, initialen: '', achternaam: '', functie: inst.afdeling || '', instelling: inst };
 }
@@ -172,6 +176,8 @@ function pv_scoorInstelling(afzender, entries) {
         else if (afd && naam.includes(afd)) score += 8;
         // Persoon (initialen) bij die instelling is niet "de afdeling".
         if (/\b[a-z]\.\s*[a-z]/.test(naam) && !(specAfd && specContact === specAfd)) score -= 2;
+        // "!" vooraan = het voorkeurscontact van de praktijk ("!Laboratorium RKZ" vóór "Laboratorium RKZ").
+        if (/^\s*!/.test(c.Naam || c.JournaalNaam || '')) score += 1;
         return { id: c.Id, naam: c.Naam || c.JournaalNaam || '', index: 0, score, query, initiaalAnders: false, afdeling };
     }).filter((k) => k && k.score >= 4).sort((a, b) => b.score - a.score);
 }
@@ -214,6 +220,7 @@ function pv_scoorKandidaten(afzender, res) {
         // Zelfde instelling als in het bericht (bv. "Dagoziekenhuis").
         const inst = afzender.instelling && pv_norm(afzender.instelling.naam);
         if (inst && naam.includes(inst)) score += 2;
+        if (/^\s*!/.test(c.Naam || c.JournaalNaam || '')) score += 1; // "!" = voorkeurscontact
         return { id: c.Id, naam: c.Naam || c.JournaalNaam || '', index, score, initiaalAnders: !!eersteInitiaal && initiaal === false };
     }).filter((k) => k.score >= 5).sort((a, b) => b.score - a.score);
 }
