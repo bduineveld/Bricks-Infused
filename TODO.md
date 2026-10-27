@@ -48,3 +48,10 @@
 - [ ] "Slecht cholesterol onmeetbaar hoog" en "schildklier goed ingesteld".
 - [ ] Nieuw contact: knop "Toewijzen" verschijnt en vult het contact in.
 - [ ] Watermerk-iconen (Health Icons) en icoonkiezer voor eigen groepen in de echte autorisatielijst.
+
+## Gebouwd in 2.7.0 — nog live te testen
+
+- [ ] Nieuwe medicatiegroepen met icoon: long/inhalatoren, maag, ontlasting, prostaat, vrouwelijke hormonen,
+      zenuwpijn, hooikoorts (neusspray-corticosteroïden alleen bij "neus"/"nasaal" in de naam).
+- [ ] Labeltjes zonder eenheid; GLP-1-agonisten (Mounjaro e.a.) geen oranje bij ontbrekende of oude waarden.
+- [ ] Firefox-versie (Bricks, U-Prevent en Zorgdomein Infused): installeren, en de koppeling tussen de drie testen.

@@ -46,9 +46,14 @@ const UPREVENT_EXT_IDS_DEV = [
   "hdneeeaikfhphigcmjcfppkclpoglhfb" // U-Prevent Infused — dev (key in manifest)
 ];
 // ============================================================================
-const UPREVENT_EXT_IDS = [...UPREVENT_EXT_IDS_PROD, ...UPREVENT_EXT_IDS_DEV];
-const UPREVENT_INSTALL_URL =
-  "https://microsoftedge.microsoft.com/addons/detail/uprevent-infused/pmlakmbpemkfccbhkdmcofagpipfchio";
+// Firefox: andere ID's (browser_specific_settings.gecko.id in de Firefox-build) en geen Edge store.
+const IS_FIREFOX = chrome.runtime.getURL('').startsWith('moz-extension://');
+const UPREVENT_EXT_IDS = IS_FIREFOX
+  ? ["uprevent-infused@dokterbart.nl"]
+  : [...UPREVENT_EXT_IDS_PROD, ...UPREVENT_EXT_IDS_DEV];
+const UPREVENT_INSTALL_URL = IS_FIREFOX
+  ? "https://addons.mozilla.org/nl/firefox/search/?q=U-Prevent%20Infused"
+  : "https://microsoftedge.microsoft.com/addons/detail/uprevent-infused/pmlakmbpemkfccbhkdmcofagpipfchio";
 
 // =============================================================================
 // Zorgdomein Infused bridge wiring (zie manifest.ids.md in Zorgdomein Infused).
@@ -72,9 +77,12 @@ const ZORGDOMEIN_EXT_IDS_DEV = [
   "dickknaonoknjbjcfmoafmkimkldeaef" // Zorgdomein Infused — dev (key in manifest)
 ];
 // ============================================================================
-const ZORGDOMEIN_EXT_IDS = [...ZORGDOMEIN_EXT_IDS_PROD, ...ZORGDOMEIN_EXT_IDS_DEV];
-const ZORGDOMEIN_INSTALL_URL =
-  "https://microsoftedge.microsoft.com/addons/detail/zorgdomein-infused/mehfpjeblkfbobhimioegkflielbcemk";
+const ZORGDOMEIN_EXT_IDS = IS_FIREFOX
+  ? ["zorgdomein-infused@dokterbart.nl"]
+  : [...ZORGDOMEIN_EXT_IDS_PROD, ...ZORGDOMEIN_EXT_IDS_DEV];
+const ZORGDOMEIN_INSTALL_URL = IS_FIREFOX
+  ? "https://addons.mozilla.org/nl/firefox/search/?q=Zorgdomein%20Infused"
+  : "https://microsoftedge.microsoft.com/addons/detail/zorgdomein-infused/mehfpjeblkfbobhimioegkflielbcemk";
 
 // Juvoly draait in een aparte tab (geen iframe — Permissions-Policy blokkeert mic in Bricks).
 const JUVOLY_HOME_URL = "https://tandem.juvoly.nl/";

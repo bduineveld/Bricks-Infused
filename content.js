@@ -1521,7 +1521,10 @@ function medicijn_markeringen() {
 
         const groepen = medicijn_groepenUitOpties(options)
             .filter((g) => g.aan !== false && Array.isArray(g.woorden) && g.woorden.length)
-            .map((g) => Object.assign({}, g, { woordenNorm: g.woorden.map(medicijn_normalize).filter(Boolean) }));
+            .map((g) => Object.assign({}, g, {
+                woordenNorm: g.woorden.map(medicijn_normalize).filter(Boolean),
+                nietNorm: (g.woordenNiet || []).map(medicijn_normalize).filter(Boolean)
+            }));
         const gevonden = {};
 
         recepten.forEach((recept) => {
@@ -1536,7 +1539,9 @@ function medicijn_markeringen() {
                 const naamNorm = medicijn_normalize(medicijnNaam);
 
                 for (const groep of groepen) {
-                    if (!groep.woordenNorm.some((w) => naamNorm.includes(w))) continue;
+                    // "fluticason+neus": alle delen moeten in de naam staan.
+                    if (!groep.woordenNorm.some((w) => w.split('+').every((d) => naamNorm.includes(d)))) continue;
+                    if (groep.nietNorm.some((w) => naamNorm.includes(w))) continue; // bv. neusspray bij longmedicatie
                     console.log(`${groep.id} gevonden: ${medicijnNaam}`);
                     // Oorspronkelijke risicogroepen: hele regel. Overige groepen: alleen een icoon (watermerk)
                     // vooraan, zodat de risicomedicatie eruit blijft springen.
@@ -1594,7 +1599,9 @@ function medicijn_labVoorPatient(patientId) {
                 if (nieuwste[key] && nieuwste[key].datum >= datum) return;
                 const def = MEDICIJN_LABWAARDEN[key];
                 nieuwste[key] = {
-                    tekst: medicijn_waardeTekst(u, def) + (u.MetingEenheid && !def.zonderEenheid ? ' ' + u.MetingEenheid : ''),
+                    // Zonder eenheid in het labeltje ("HbA1c 53 mrt'26"); de eenheid staat in de tooltip.
+                    tekst: medicijn_waardeTekst(u, def),
+                    eenheid: u.MetingEenheid || '',
                     getal: parseFloat(String(u.WaardeDisplay).replace(/[<>\s]/g, '').replace(',', '.')),
                     datum,
                     afwijkend: !!u.Afwijkend,
@@ -1647,9 +1654,10 @@ function medicijn_labKeysVoorRegel(rr) {
 // 'oranje' = actie nodig: geen waarde of laatste waarde ouder dan 13 maanden.
 // 'geel'   = afwijkend: eGFR < 30 (bij DOAC < 50), of afwijkend volgens het lab (niet bij HbA1c).
 // ''       = in orde.
-function medicijn_labNiveau(key, w, groep) {
-    if (!w) return 'oranje';
-    if ((Date.now() - w.datum.getTime()) > 396 * 86400000) return 'oranje';
+// Bij groep.labRustig (bv. GLP-1-agonisten): wel tonen, maar geen oranje als de waarde ontbreekt of oud is.
+function medicijn_labNiveau(key, w, groep, rustig) {
+    if (!w) return rustig ? '' : 'oranje';
+    if ((Date.now() - w.datum.getTime()) > 396 * 86400000) return rustig ? '' : 'oranje';
     if (key === 'egfr' && !isNaN(w.getal)) {
         if (w.getal < 30 || (groep.egfrOranjeOnder && w.getal < groep.egfrOranjeOnder)) return 'geel';
         return '';
@@ -1693,16 +1701,19 @@ async function medicijn_toonLabwaarden(receptenDom) {
             const houder = document.createElement('span');
             houder.className = 'bi-med-lab';
             houder.style.cssText = 'display:inline-flex;gap:4px;margin-left:8px;vertical-align:middle;';
+            const g = rr.__biGroep || {};
+            const naamNorm = medicijn_normalize(naamMed.textContent);
+            const rustig = Array.isArray(g.labRustig) && g.labRustig.some((x) => naamNorm.includes(medicijn_normalize(x)));
             medicijn_labKeysVoorRegel(rr).forEach((key) => {
                 const def = MEDICIJN_LABWAARDEN[key];
                 const w = labs[key];
                 const chip = document.createElement('span');
                 const oud = w && (Date.now() - w.datum.getTime()) > 396 * 86400000;
                 chip.textContent = w ? `${def.label} ${w.tekst} ${medicijn_maandJaar(w.datum)}` : `${def.label} onbekend`;
-                chip.title = w ? `${w.naam}: ${w.tekst} op ${w.datum.toLocaleDateString('nl-NL')}`
+                chip.title = w ? `${w.naam}: ${w.tekst}${w.eenheid ? ' ' + w.eenheid : ''} op ${w.datum.toLocaleDateString('nl-NL')}`
                     + (w.afwijkend ? ' (afwijkend volgens lab)' : '') + (oud ? ' — ouder dan 13 maanden' : '')
                     : `Geen ${def.label} gevonden in de metingen van deze patiënt`;
-                const niveau = medicijn_labNiveau(key, w, rr.__biGroep);
+                const niveau = medicijn_labNiveau(key, w, rr.__biGroep, rustig);
                 chip.style.cssText = 'font-size:11px;padding:0 6px;border-radius:8px;white-space:nowrap;'
                     + (niveau === 'oranje' ? 'background:#fff4e5;border:1px solid #f6ad55;color:#9c4221;font-weight:600;'
                         : niveau === 'geel' ? 'background:#fefcbf;border:1px solid #ecc94b;color:#744210;'

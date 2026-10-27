@@ -5,6 +5,8 @@
 //   medicijnGroepenUit:    ['nsaid', ...]   standaardgroepen die uit staan
 //   medicijnHoogrisico:    [...] of null    eigen woordenlijst voor Hoogrisicomedicatie (null = standaard)
 //   medicijnEigenGroepen:  [{ id, naam, kleur, aan, woorden }]   volledig eigen groepen
+// Een woord als 'fluticason+neus' matcht alleen als alle delen in de naam staan.
+// woordenNiet: medicijnnamen met een van deze woorden horen niet bij de groep (bv. neusspray bij longmedicatie).
 // De woordenlijsten van de overige standaardgroepen zijn bewust niet aanpasbaar.
 //
 // stijl: 'rij' = hele regel kleuren (de oorspronkelijke risicogroepen), 'strook' = alleen een
@@ -59,10 +61,14 @@ const MEDICIJN_STANDAARD_GROEPEN = [
     },
     {
         id: 'antidiabetica', stijl: 'strook', icoon: 'diabetes', kleurStrook: '#16a34a', naam: 'Antidiabetica', kleur: '#dcfce7', aan: true, lab: ['hba1c', 'egfr'],
+        // GLP-1-agonisten (ook bij overgewicht zonder diabetes): waarden wel tonen, maar geen oranje als ze ontbreken.
+        labRustig: ['liraglutide', 'semaglutide', 'dulaglutide', 'exenatide', 'tirzepatide', 'mounjaro', 'ozempic', 'wegovy',
+            'rybelsus', 'victoza', 'saxenda', 'trulicity', 'byetta', 'bydureon'],
         woorden: ['metformine', 'gliclazide', 'glimepiride', 'glibenclamide', 'tolbutamide', 'sitagliptine',
             'vildagliptine', 'linagliptine', 'saxagliptine', 'alogliptine', 'empagliflozine', 'dapagliflozine',
             'canagliflozine', 'ertugliflozine', 'pioglitazon', 'acarbose', 'repaglinide', 'liraglutide', 'semaglutide',
-            'dulaglutide', 'exenatide', 'tirzepatide', 'insuline', 'lantus', 'levemir', 'tresiba', 'toujeo',
+            'dulaglutide', 'exenatide', 'tirzepatide', 'mounjaro', 'ozempic', 'wegovy', 'rybelsus', 'victoza', 'saxenda',
+            'trulicity', 'byetta', 'bydureon', 'insuline', 'lantus', 'levemir', 'tresiba', 'toujeo',
             'abasaglar', 'novorapid', 'humalog', 'apidra', 'fiasp', 'humuline', 'insulatard', 'novomix']
     },
     {
@@ -104,6 +110,59 @@ const MEDICIJN_STANDAARD_GROEPEN = [
             'quetiapine', 'olanzapine', 'risperidon', 'aripiprazol', 'haloperidol', 'clozapine', 'pipamperon',
             'paliperidon', 'lurasidon', 'cariprazine', 'lithium'
         ]
+    },
+    {
+        // Neussprays met een corticosteroïd alleen als het een neusspray is (dezelfde stoffen bestaan als
+        // inhalator, crème of darmcapsule).
+        id: 'hooikoorts', stijl: 'strook', icoon: 'allergies', kleurStrook: '#ca8a04', naam: 'Hooikoortsmedicatie', kleur: '#fef9c3', aan: true,
+        woorden: ['cetirizine', 'levocetirizine', 'loratadine', 'desloratadine', 'fexofenadine', 'ebastine', 'bilastine',
+            'rupatadine', 'mizolastine', 'clemastine', 'azelastine', 'levocabastine', 'cromoglicinezuur', 'ketotifen',
+            'olopatadine', 'zyrtec', 'xyzal', 'aerius', 'telfast', 'allergodil', 'livocab', 'opticrom', 'dymista',
+            'avamys', 'flixonase', 'nasonex', 'rhinocort', 'nasacort', 'beconase',
+            'fluticason+neus', 'mometason+neus', 'budesonide+neus', 'beclometason+neus', 'triamcinolon+neus',
+            'fluticason+nasaal', 'mometason+nasaal', 'budesonide+nasaal', 'beclometason+nasaal', 'triamcinolon+nasaal']
+    },
+    {
+        id: 'long', stijl: 'strook', icoon: 'lungs', kleurStrook: '#0d9488', naam: 'Longmedicatie en inhalatoren', kleur: '#ccfbf1', aan: true,
+        // Corticosteroïden ook als neusspray of darmcapsule: die horen hier niet bij.
+        woordenNiet: ['neus', 'nasaal', 'msr', 'mga', 'rectaal', 'klysma', 'schuim', 'zalf', 'creme', 'oordruppel', 'oogdruppel'],
+        woorden: ['salbutamol', 'terbutaline', 'ipratropium', 'tiotropium', 'glycopyrronium', 'umeclidinium', 'aclidinium',
+            'formoterol', 'salmeterol', 'indacaterol', 'olodaterol', 'vilanterol', 'beclometason', 'budesonide',
+            'fluticason', 'ciclesonide', 'montelukast', 'roflumilast', 'theofylline', 'ventolin', 'airomir', 'atrovent',
+            'spiriva', 'symbicort', 'seretide', 'foster', 'flutiform', 'relvar', 'trelegy', 'trimbow', 'anoro', 'ultibro',
+            'spiolto', 'duaklir', 'serevent', 'oxis', 'pulmicort', 'qvar', 'alvesco', 'flixotide', 'bufomix', 'inhalat']
+    },
+    {
+        id: 'maag', stijl: 'strook', icoon: 'stomach', kleurStrook: '#ea580c', naam: 'Maagmedicatie', kleur: '#ffedd5', aan: true,
+        woorden: ['omeprazol', 'esomeprazol', 'pantoprazol', 'lansoprazol', 'rabeprazol', 'losec', 'nexium', 'pantozol',
+            'famotidine', 'ranitidine', 'cimetidine', 'nizatidine', 'sucralfaat', 'misoprostol', 'gaviscon', 'algeldraat',
+            'domperidon', 'metoclopramide']
+    },
+    {
+        id: 'ontlasting', stijl: 'strook', icoon: 'colon', kleurStrook: '#a16207', naam: 'Ontlasting (obstipatie en diarree)', kleur: '#fef3c7', aan: true,
+        woorden: ['macrogol', 'movicolon', 'forlax', 'lactulose', 'lactitol', 'magnesiumoxide', 'magnesiumhydroxide',
+            'bisacodyl', 'dulcolax', 'sennosiden', 'senna', 'natriumpicosulfaat', 'docusaat', 'prucalopride', 'resolor',
+            'naloxegol', 'methylnaltrexon', 'linaclotide', 'psyllium', 'ispaghula', 'metamucil', 'volcolon', 'microlax',
+            'loperamide']
+    },
+    {
+        id: 'prostaat', stijl: 'strook', icoon: 'prostate', kleurStrook: '#4f46e5', naam: 'Prostaatmedicatie', kleur: '#e0e7ff', aan: true,
+        // Doxazosine staat bij de bloeddrukmedicatie (gaat voor).
+        woorden: ['tamsulosine', 'alfuzosine', 'silodosine', 'terazosine', 'finasteride', 'dutasteride', 'omnic',
+            'combodart', 'avodart']
+    },
+    {
+        id: 'vrouwhormoon', stijl: 'strook', icoon: 'woman', kleurStrook: '#e11d48', naam: 'Vrouwelijke hormonen, anticonceptie en overgang', kleur: '#ffe4e6', aan: true,
+        woorden: ['estradiol', 'oestradiol', 'estriol', 'levonorgestrel', 'desogestrel', 'etonogestrel', 'drospirenon',
+            'norethisteron', 'dydrogesteron', 'progesteron', 'medroxyprogesteron', 'tibolon', 'cyproteron',
+            'chloormadinon', 'nomegestrol', 'dienogest', 'gestodeen', 'lynestrenol', 'ulipristal', 'microgynon',
+            'yasmin', 'cerazette', 'mirena', 'kyleena', 'jaydess', 'implanon', 'nuvaring', 'livial', 'femoston',
+            'activelle', 'vagifem', 'ovestin', 'zoely', 'qlaira', 'depo-provera']
+    },
+    {
+        id: 'zenuwpijn', stijl: 'strook', icoon: 'nerve', kleurStrook: '#65a30d', naam: 'Zenuwpijnmedicatie', kleur: '#ecfccb', aan: true,
+        // Amitriptyline/nortriptyline/duloxetine staan bij de psychofarmaca.
+        woorden: ['pregabaline', 'gabapentine', 'lyrica', 'neurontin', 'capsaicine', 'qutenza', 'versatis']
     }
 ];
 
@@ -111,7 +170,7 @@ const MEDICIJN_STANDAARD_GROEPEN = [
 // uit Bricks' bepalingenlijst (Bepaling.GetList). Met deze codes volstaat één call per patiënt
 // (LabBepalingMeting.GetUitslagenByWCIACodes). POC-varianten en vervallen codes tellen mee.
 const MEDICIJN_LABWAARDEN = {
-    egfr: { label: 'eGFR', codes: ['KREC/O/FB', 'KREM/O/FB', 'KREC/O/PO', 'KREM/O/PO'], zonderEenheid: true, decimalen: 0 },
+    egfr: { label: 'eGFR', codes: ['KREC/O/FB', 'KREM/O/FB', 'KREC/O/PO', 'KREM/O/PO'], decimalen: 0 },
     kalium: { label: 'K', codes: ['K/B/', 'K/B/PO'], decimalen: 1 },
     hb: { label: 'Hb', codes: ['HB/B/'], decimalen: 1 },
     hba1c: { label: 'HbA1c', codes: ['HBAC/B/', 'HBAP/B/PO', 'HBAP/B/', 'HB1C/B/', 'GLHB/B/'] },
