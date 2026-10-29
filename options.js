@@ -147,16 +147,26 @@ function collectPostverwerkingOpties() {
 
 function renderMedicijnGroepen(data) {
   const uit = data.medicijnGroepenUit || [];
+  const rijLijst = document.getElementById('medicijn-rij-lijst');
   const std = document.getElementById('medicijn-standaard-lijst');
+  rijLijst.innerHTML = '';
   std.innerHTML = '';
-  MEDICIJN_STANDAARD_GROEPEN.forEach((g) => {
+  // Rij-groepen in vaste volgorde; icoongroepen op alfabet (de volgorde voor het matchen blijft die van
+  // MEDICIJN_STANDAARD_GROEPEN).
+  const groepen = MEDICIJN_STANDAARD_GROEPEN.filter((g) => g.stijl === 'rij')
+    .concat(MEDICIJN_STANDAARD_GROEPEN.filter((g) => g.stijl !== 'rij').sort((a, b) => a.naam.localeCompare(b.naam, 'nl')));
+  groepen.forEach((g) => {
     const l = document.createElement('label');
     l.className = 'mg-standaard';
     l.innerHTML = '<input type="checkbox" class="mg-std-aan"><span class="mg-kleurvlak"></span><span class="mg-std-naam"></span>';
-    l.querySelector('input').dataset.id = g.id;
-    l.querySelector('input').checked = !uit.includes(g.id);
+    const cb = l.querySelector('input');
+    cb.dataset.id = g.id;
+    cb.dataset.stijl = g.stijl;
+    cb.checked = !uit.includes(g.id);
     l.querySelector('.mg-kleurvlak').style.background = g.kleur;
     l.querySelector('.mg-std-naam').textContent = g.naam;
+    // Welke middelen eronder vallen (hoogrisico: zie het tekstveld eronder).
+    if (!g.bewerkbaar) l.title = g.naam + ':\n' + g.woorden.map((w) => w.replace('+', ' + ')).join(', ');
     // Groepen met een watermerk tonen hun icoon i.p.v. het kleurvlakje.
     if (g.stijl === 'strook') l.querySelector('.mg-kleurvlak').replaceWith(maakIcoonBeeld(g.icoon, g.naam, g.kleurStrook || g.kleur, 18));
     if ((g.lab || []).length) {
@@ -165,7 +175,10 @@ function renderMedicijnGroepen(data) {
       lab.textContent = g.lab.map((k) => MEDICIJN_LABWAARDEN[k].label).join(', ') + (g.labAlleen ? " (DOAC's)" : '');
       l.appendChild(lab);
     }
-    std.appendChild(l);
+    const werkBij = () => l.classList.toggle('uit', !cb.checked);
+    cb.addEventListener('change', werkBij);
+    werkBij();
+    (g.stijl === 'rij' ? rijLijst : std).appendChild(l);
   });
 
   const hoog = MEDICIJN_STANDAARD_GROEPEN.find((g) => g.bewerkbaar);
@@ -176,6 +189,39 @@ function renderMedicijnGroepen(data) {
   const eigen = document.getElementById('medicijn-eigen-lijst');
   eigen.innerHTML = '';
   (data.medicijnEigenGroepen || []).forEach((g) => eigen.appendChild(maakEigenGroepRij(g)));
+}
+
+// "alles aan" / "alles uit" voor de groepen met een icoon.
+function zetStrookGroepen(aan) {
+  document.querySelectorAll('#medicijn-standaard-lijst .mg-std-aan').forEach((cb) => {
+    cb.checked = aan;
+    cb.dispatchEvent(new Event('change'));
+  });
+}
+
+// Locatiefilter: keuzelijst met de werkgroepen uit het tekstvak; de keuze staat per computer in
+// chrome.storage.local (zelfde sleutel als in content.js); standaard 'alle'.
+const LOCATIEKEUZE_SLEUTEL = 'medicijnLocatieKeuze';
+
+function vulLocatieKeuze(huidig) {
+  const select = document.getElementById('opt-medicijn-locatiekeuze');
+  const waarde = huidig != null ? huidig : select.value;
+  const groepen = document.getElementById('opt-medicijn-locatiegroepen').value.split('\n')
+    .map((r) => (r.match(/^\s*([^=]+?)\s*=/) || [])[1]).filter(Boolean);
+  select.innerHTML = '';
+  [['alle', 'Alle locaties']]
+    .concat(groepen.map((g) => [g, g]))
+    .forEach(([v, t]) => {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = t;
+      select.appendChild(o);
+    });
+  select.value = [...select.options].some((o) => o.value === waarde) ? waarde : 'alle';
+}
+
+function werkLocatieKaartBij() {
+  document.getElementById('mg-locatie-instellingen').classList.toggle('uit', !document.getElementById('opt-medicijn-locatie').checked);
 }
 
 // Klein icoon (of letter) als <span> met inline SVG, voor de opties.
@@ -542,8 +588,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Alleen de schakelaar zelf zet een optie om; klik op de tekst niet. Bij een uitklapbaar item klapt
+  // een klik op de tekst (of het grijze blok) de instellingen uit/in.
+  document.querySelectorAll('.checkbox-item > label, label.mg-optie').forEach((label) => {
+    label.addEventListener('click', function(e) {
+      if (e.target.closest('input, select, textarea, a, button')) return;
+      e.preventDefault();
+      const toggle = label.closest('.checkbox-item.has-expandable')?.querySelector('.expand-toggle');
+      if (toggle && toggle.getAttribute('data-target')) {
+        e.stopPropagation();
+        toggleSection(toggle.getAttribute('data-target'), toggle);
+      }
+    });
+  });
+
   // Klik op het grijze blok (checkbox-item.has-expandable) klapt ook uit/in.
-  // Uitzondering: klik op checkbox, label of pijltje behoudt het normale gedrag.
+  // Uitzondering: checkbox, label (hierboven) en pijltje hebben hun eigen afhandeling.
   const expandableCheckboxItems = document.querySelectorAll('.checkbox-item.has-expandable');
   expandableCheckboxItems.forEach((item) => {
     const toggle = item.querySelector('.expand-toggle');
@@ -669,6 +729,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('opt-zd-contact').value = data.postZdContact != null ? data.postZdContact : '!Huisartsenpraktijk Broekpolder';
     renderMedicijnGroepen(data);
     document.getElementById('opt-medicijn-lab').checked = data.medicijnLabwaarden !== false;
+    document.getElementById('opt-medicijn-locatie').checked = data.medicijnLocaties !== false;
+    // Zelfde standaard als in background.js (oudere opslag heeft de sleutel nog niet).
+    document.getElementById('opt-medicijn-locatiegroepen').value = data.medicijnLocatieGroepen != null
+      ? data.medicijnLocatieGroepen : 'Plantage = Locatie Plantage\nCitadel + Prinsenhof = Locatie Citadel, Locatie Prinsenhof';
+    chrome.storage.local.get(LOCATIEKEUZE_SLEUTEL, (d) => vulLocatieKeuze((d && d[LOCATIEKEUZE_SLEUTEL]) || 'alle'));
+    document.getElementById('opt-medicijn-locatiegroepen').addEventListener('input', () => vulLocatieKeuze());
+    document.getElementById('opt-medicijn-locatie').addEventListener('change', werkLocatieKaartBij);
+    werkLocatieKaartBij();
+    document.getElementById('mg-strook-alles-aan').addEventListener('click', () => zetStrookGroepen(true));
+    document.getElementById('mg-strook-alles-uit').addEventListener('click', () => zetStrookGroepen(false));
     document.getElementById('opt-zorgdomein').checked = data.zorgdomeinSnelkoppelingen !== false;
     // Alleen renderen als er data bestaat
     if (data.btnLabels && data.btnLabels.length > 0) {
@@ -696,7 +766,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const postZdContact = document.getElementById('opt-zd-contact').value.trim();
     const { medicijnGroepenUit, medicijnHoogrisico, medicijnEigenGroepen } = collectMedicijnGroepen();
     const medicijnLabwaarden = document.getElementById('opt-medicijn-lab').checked;
-    setStorage({ postTypenUit, postWeglaten, postKopjes, postZdContact, medicijnLabwaarden, medicijnGroepenUit, medicijnHoogrisico, medicijnEigenGroepen, klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, postverwerkingLab, postverwerkingBrief, zorgdomeinSnelkoppelingen, btnLabels }, () => {
+    const medicijnLocaties = document.getElementById('opt-medicijn-locatie').checked;
+    const medicijnLocatieGroepen = document.getElementById('opt-medicijn-locatiegroepen').value.trim();
+    chrome.storage.local.set({ [LOCATIEKEUZE_SLEUTEL]: document.getElementById('opt-medicijn-locatiekeuze').value });
+    setStorage({ postTypenUit, postWeglaten, postKopjes, postZdContact, medicijnLabwaarden, medicijnLocaties, medicijnLocatieGroepen, medicijnGroepenUit, medicijnHoogrisico, medicijnEigenGroepen, klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, postverwerkingLab, postverwerkingBrief, zorgdomeinSnelkoppelingen, btnLabels }, () => {
       document.getElementById('status').textContent = 'Opgeslagen!';
       setTimeout(() => document.getElementById('status').textContent = '', 1500);
     });

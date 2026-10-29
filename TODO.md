@@ -55,3 +55,23 @@
       zenuwpijn, hooikoorts (neusspray-corticosteroïden alleen bij "neus"/"nasaal" in de naam).
 - [ ] Labeltjes zonder eenheid; GLP-1-agonisten (Mounjaro e.a.) geen oranje bij ontbrekende of oude waarden.
 - [ ] Firefox-versie (Bricks, U-Prevent en Zorgdomein Infused): installeren, en de koppeling tussen de drie testen.
+
+## Gebouwd in 2.8.0 — nog live te testen
+
+- [ ] Labwaarden in de autorisatie weer zichtbaar (Bricks' title is nu "Open dossier van …"); datum in het labeltje lichter.
+- [ ] Nieuwe groepen: oog, oor, bot, vitamines, ijzer, vaccinaties, migraine, anti-epileptica, blaas, antibiotica,
+      hartmedicatie; hooikoorts → "Hooikoorts en eczeem" incl. hormooncrèmes; ♀/♂ als icoon; Trimbow-afkortingen.
+- [ ] Locatiebolletje per patiënt (kleur zoals Bricks: Citadel/Prinsenhof groen, Plantage blauw).
+- [ ] Locatiefilter op werkgroep (Alle | Plantage | Citadel + Prinsenhof): standaard de werkplek uit de tabtitel,
+      keuze per computer onthouden, patiënten zonder locatie/Telefonisch in elke groep, melding + "Toon alles".
+- [ ] "Alles goedkeuren/afkeuren" slaat verborgen recepten over (Bricks' dialoog telt alleen zichtbare regels);
+      na "Alles goedkeuren" de groep wisselen: verborgen recepten staan nog op "geen autorisatie".
+- [ ] Compacte legenda (alleen icoon + aantal, naam in tooltip) rechts op dezelfde regel als het locatiefilter;
+      klik op een icoon markeert die groep (andere regels half doorzichtig), nog eens klikken heft het op.
+- [ ] Opties "Medicatie markeren" opnieuw ingedeeld (In de lijst / Locatiefilter / Medicatiegroepen / Eigen groepen);
+      locatiekeuze per computer (standaard Alle); in de lijst "Bewaar als standaard", ook te kiezen in de opties.
+- [ ] Opties: alleen de schakelaar zet een optie om; klik op de tekst klapt een uitklapbaar item uit/in.
+- [ ] "Gemarkeerd goedkeuren" (pastelgroen, links van "Alles goedkeuren"): keurt de open regels van de
+      gemarkeerde groep goed in zichtbare recepten; uit zolang er niets gemarkeerd is. Controleren: knop staat
+      er, zonder vraag, regels worden groen/goedgekeurd, afgekeurde blijven afgekeurd, verwerken
+      werkt daarna normaal.

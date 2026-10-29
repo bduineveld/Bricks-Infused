@@ -71,6 +71,9 @@
       call('doApi', { service, method, params, ignoreBusy }, 60000),
     toggleLayoutResize: () => call('toggleLayoutResize', {}, 5000),
     autorisatieRecepten: () => call('autorisatieRecepten', {}, 5000),
+    autorisatieVerberg: (patientIds, zoektekst) => call('autorisatieVerberg', { patientIds, zoektekst }, 5000),
+    autorisatieOpenRegels: () => call('autorisatieOpenRegels', {}, 5000),
+    autorisatieZetStatus: (items, status) => call('autorisatieZetStatus', { items, status }, 5000),
     startZorgdomeinVerwijzing: (opts) =>
       call('startZorgdomeinVerwijzing', opts || {}, 60000),
     whoAmI: () => call('whoAmI'),

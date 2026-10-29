@@ -44,6 +44,15 @@ const MEDICIJN_STANDAARD_GROEPEN = [
         woorden: ['methotrexaat', 'amiodaron']
     },
     {
+        // Oog- en oordruppels: de toedieningsvorm gaat voor de stof (bv. dexamethason-oogdruppels, antibiotische oordruppels).
+        id: 'oog', stijl: 'strook', icoon: 'eye', kleurStrook: '#0f766e', naam: 'Oogdruppels en -zalf', kleur: '#ccfbf1', aan: true,
+        woorden: ['oogdr', 'oog dr', 'oogzalf', 'ooggel', 'oogemul', 'oogspoel', 'oogsusp']
+    },
+    {
+        id: 'oor', stijl: 'strook', icoon: 'ear', kleurStrook: '#854d0e', naam: 'Oordruppels', kleur: '#fef3c7', aan: true,
+        woorden: ['oordr', 'oor dr', 'oorzalf', 'oorspray', 'oorspoel', 'otosporin', 'otocomb', 'ciprodex', 'cerumenex']
+    },
+    {
         // Ascal/carbasalaatcalcium en acetylsalicylzuur horen hier, NIET bij de NSAID's.
         id: 'bloedverdunner', stijl: 'strook', icoon: 'blood-drop', kleurStrook: '#db2777', naam: 'Bloedverdunners', kleur: '#fce7f3', aan: true,
         // Labwaarden alleen bij de DOAC's; eGFR bij een DOAC al oranje vanaf < 50.
@@ -91,6 +100,16 @@ const MEDICIJN_STANDAARD_GROEPEN = [
         ]
     },
     {
+        // Nitraten en overige anti-angineuze/antiaritmische middelen (amiodaron staat bij hoogrisico).
+        id: 'hart', stijl: 'strook', icoon: 'heart-organ', kleurStrook: '#be123c', naam: 'Hartmedicatie (angina pectoris, ritme)', kleur: '#ffe4e6', aan: true,
+        woorden: [
+            'nitroglyc', 'glyceryltrinitr', 'isosorbide', 'cedocard', 'nitrolingual', 'nitrostat', 'nitroderm', 'nitro-dur',
+            'minitran', 'deponit', 'transiderm-nitro', 'isordil', 'promocard', 'mononitraat', 'dinitraat',
+            'nicorandil', 'ivabradine', 'procoralan', 'ranolazine', 'ranexa', 'molsidomine',
+            'digoxine', 'lanoxin', 'flecainide', 'tambocor', 'propafenon', 'rytmonorm', 'sotalol', 'dronedaron', 'multaq'
+        ]
+    },
+    {
         id: 'cholesterol', stijl: 'strook', icoon: 'blood-vessel', kleurStrook: '#7c3aed', naam: 'Cholesterolmedicatie', kleur: '#ede9fe', aan: true, lab: ['ldl'],
         woorden: ['simvastatine', 'atorvastatine', 'rosuvastatine', 'pravastatine', 'fluvastatine', 'pitavastatine',
             'ezetimib', 'evolocumab', 'alirocumab', 'inclisiran', 'bempedoinezuur', 'fenofibraat', 'gemfibrozil']
@@ -112,15 +131,30 @@ const MEDICIJN_STANDAARD_GROEPEN = [
         ]
     },
     {
-        // Neussprays met een corticosteroïd alleen als het een neusspray is (dezelfde stoffen bestaan als
-        // inhalator, crème of darmcapsule).
-        id: 'hooikoorts', stijl: 'strook', icoon: 'allergies', kleurStrook: '#ca8a04', naam: 'Hooikoortsmedicatie', kleur: '#fef9c3', aan: true,
+        // Hooikoorts en eczeem. Corticosteroïden alleen als neusspray of als crème/zalf (dezelfde stoffen bestaan
+        // als inhalator, tablet of darmcapsule). 'stof+neus' = beide delen in de naam.
+        id: 'hooikoorts', stijl: 'strook', icoon: 'allergies', kleurStrook: '#ca8a04', naam: 'Hooikoorts en eczeem', kleur: '#fef9c3', aan: true,
         woorden: ['cetirizine', 'levocetirizine', 'loratadine', 'desloratadine', 'fexofenadine', 'ebastine', 'bilastine',
             'rupatadine', 'mizolastine', 'clemastine', 'azelastine', 'levocabastine', 'cromoglicinezuur', 'ketotifen',
             'olopatadine', 'zyrtec', 'xyzal', 'aerius', 'telfast', 'allergodil', 'livocab', 'opticrom', 'dymista',
             'avamys', 'flixonase', 'nasonex', 'rhinocort', 'nasacort', 'beconase',
-            'fluticason+neus', 'mometason+neus', 'budesonide+neus', 'beclometason+neus', 'triamcinolon+neus',
-            'fluticason+nasaal', 'mometason+nasaal', 'budesonide+nasaal', 'beclometason+nasaal', 'triamcinolon+nasaal']
+            // neusspray met corticosteroïd
+            'flutic+neus', 'flutic+nasaal', 'mometas+neus', 'mometas+nasaal', 'budeson+neus', 'budeson+nasaal', 'beclomet+neus', 'beclomet+nasaal', 'triamcin+neus', 'triamcin+nasaal',
+            // hormooncrèmes en -zalven
+            'hydrocort+creme', 'hydrocort+zalf', 'hydrocort+lotion', 'hydrocort+emuls',
+            'triamcin+creme', 'triamcin+zalf', 'triamcin+lotion', 'triamcin+emuls',
+            'clobetas+creme', 'clobetas+zalf', 'clobetas+lotion', 'clobetas+emuls',
+            'betameth+creme', 'betameth+zalf', 'betameth+lotion', 'betameth+emuls',
+            'desoxim+creme', 'desoxim+zalf', 'desoxim+lotion', 'desoxim+emuls',
+            'flutic+creme', 'flutic+zalf', 'flutic+lotion', 'flutic+emuls',
+            'mometas+creme', 'mometas+zalf', 'mometas+lotion', 'mometas+emuls',
+            'diflucort+creme', 'diflucort+zalf', 'diflucort+lotion', 'diflucort+emuls',
+            'methylpred+creme', 'methylpred+zalf', 'methylpred+lotion', 'methylpred+emuls',
+            'fluocin+creme', 'fluocin+zalf', 'fluocin+lotion', 'fluocin+emuls',
+            'prednicarb+creme', 'prednicarb+zalf', 'prednicarb+lotion', 'prednicarb+emuls',
+            'alclomet+creme', 'alclomet+zalf', 'alclomet+lotion', 'alclomet+emuls',
+            'locoid', 'dermovate', 'emovate', 'elocon', 'diprosone', 'betnovate', 'cutivate', 'advantan', 'nerisona',
+            'topicorte', 'synalar', 'fucicort', 'daktacort']
     },
     {
         id: 'long', stijl: 'strook', icoon: 'lungs', kleurStrook: '#0d9488', naam: 'Longmedicatie en inhalatoren', kleur: '#ccfbf1', aan: true,
@@ -130,7 +164,10 @@ const MEDICIJN_STANDAARD_GROEPEN = [
             'formoterol', 'salmeterol', 'indacaterol', 'olodaterol', 'vilanterol', 'beclometason', 'budesonide',
             'fluticason', 'ciclesonide', 'montelukast', 'roflumilast', 'theofylline', 'ventolin', 'airomir', 'atrovent',
             'spiriva', 'symbicort', 'seretide', 'foster', 'flutiform', 'relvar', 'trelegy', 'trimbow', 'anoro', 'ultibro',
-            'spiolto', 'duaklir', 'serevent', 'oxis', 'pulmicort', 'qvar', 'alvesco', 'flixotide', 'bufomix', 'inhalat']
+            'spiolto', 'duaklir', 'serevent', 'oxis', 'pulmicort', 'qvar', 'alvesco', 'flixotide', 'bufomix', 'inhalat',
+            // afkortingen in Bricks, bv. "BECLOMET/FORMOT/GLYCOPYR AER" en "TRIMBO AER"
+            'trimbo', 'beclomet', 'formot', 'glycopyr', 'salbut', 'salmet', 'tiotrop', 'ipratrop', 'umeclid', 'vilant',
+            'indacat', 'flutic', 'budeson']
     },
     {
         id: 'maag', stijl: 'strook', icoon: 'stomach', kleurStrook: '#ea580c', naam: 'Maagmedicatie', kleur: '#ffedd5', aan: true,
@@ -146,18 +183,73 @@ const MEDICIJN_STANDAARD_GROEPEN = [
             'loperamide']
     },
     {
-        id: 'prostaat', stijl: 'strook', icoon: 'prostate', kleurStrook: '#4f46e5', naam: 'Prostaatmedicatie', kleur: '#e0e7ff', aan: true,
+        id: 'prostaat', stijl: 'strook', icoon: 'male', kleurStrook: '#4f46e5', naam: 'Prostaatmedicatie', kleur: '#e0e7ff', aan: true,
         // Doxazosine staat bij de bloeddrukmedicatie (gaat voor).
         woorden: ['tamsulosine', 'alfuzosine', 'silodosine', 'terazosine', 'finasteride', 'dutasteride', 'omnic',
             'combodart', 'avodart']
     },
     {
-        id: 'vrouwhormoon', stijl: 'strook', icoon: 'woman', kleurStrook: '#e11d48', naam: 'Vrouwelijke hormonen, anticonceptie en overgang', kleur: '#ffe4e6', aan: true,
+        id: 'vrouwhormoon', stijl: 'strook', icoon: 'female', kleurStrook: '#e11d48', naam: 'Vrouwelijke hormonen, anticonceptie en overgang', kleur: '#ffe4e6', aan: true,
         woorden: ['estradiol', 'oestradiol', 'estriol', 'levonorgestrel', 'desogestrel', 'etonogestrel', 'drospirenon',
             'norethisteron', 'dydrogesteron', 'progesteron', 'medroxyprogesteron', 'tibolon', 'cyproteron',
             'chloormadinon', 'nomegestrol', 'dienogest', 'gestodeen', 'lynestrenol', 'ulipristal', 'microgynon',
             'yasmin', 'cerazette', 'mirena', 'kyleena', 'jaydess', 'implanon', 'nuvaring', 'livial', 'femoston',
             'activelle', 'vagifem', 'ovestin', 'zoely', 'qlaira', 'depo-provera']
+    },
+    {
+        id: 'bot', stijl: 'strook', icoon: 'bone', kleurStrook: '#64748b', naam: 'Botontkalking (osteoporose)', kleur: '#f1f5f9', aan: true,
+        // Calcium (ook met vitamine D) hoort hier; vitamine D zonder calcium bij de vitamines.
+        woorden: ['alendron', 'risedron', 'ibandron', 'zoledron', 'fosamax', 'actonel', 'denosumab', 'prolia', 'teriparatide',
+            'forsteo', 'romosozumab', 'evenity', 'raloxifeen', 'calcium', 'calci-chew', 'calcichew', 'cacit']
+    },
+    {
+        id: 'ijzer', stijl: 'strook', icoon: 'blood-cells', kleurStrook: '#9f1239', naam: 'IJzerpreparaten', kleur: '#ffe4e6', aan: true,
+        woorden: [
+            'ferrofumaraat', 'ferrogluconaat', 'ferrosulfaat', 'ferro-gradumet', 'ferrogradumet', 'ferrumfumaraat',
+            'ijzer', 'ferinject', 'venofer', 'monofer', 'carboxymaltose'
+        ]
+    },
+    {
+        id: 'vitamine', stijl: 'strook', icoon: 'fruits', kleurStrook: '#f59e0b', naam: 'Vitamines', kleur: '#fff7ed', aan: true,
+        woorden: ['vitamine', 'vit b', 'vit c', 'vit d', 'vit k', 'colecalc', 'calcifediol', 'alfacalcidol', 'thiamine',
+            'hydroxocobalamine', 'cyanocobalamine', 'cobalamine', 'foliumzuur', 'pyridoxine', 'riboflavine', 'ascorbinezuur',
+            'fytomenadion', 'multivit', 'davitamon', 'd-cura', 'divisun']
+    },
+    {
+        id: 'vaccin', stijl: 'strook', icoon: 'vaccine', kleurStrook: '#0e7490', naam: 'Vaccinaties', kleur: '#cffafe', aan: true,
+        woorden: [
+            'vaccin', 'hepatitis', 'influenza', 'griep', 'havrix', 'vaqta', 'engerix', 'hbvaxpro', 'twinrix', 'influvac',
+            'vaxigrip', 'fluarix', 'efluelda', 'pneumovax', 'prevenar', 'vaxneuvance', 'boostrix', 'revaxis', 'typhim',
+            'vivotif', 'ixiaro', 'shingrix', 'comirnaty', 'spikevax', 'stamaril', 'rabipur', 'verorab', 'gardasil',
+            'arexvy', 'abrysvo', 'menveo', 'nimenrix', 'dukoral', 'encepur', 'ticovac', 'qdenga'
+        ]
+    },
+    {
+        id: 'migraine', stijl: 'strook', icoon: 'headache', kleurStrook: '#6d28d9', naam: 'Migrainemedicatie (triptanen)', kleur: '#ede9fe', aan: true,
+        woorden: [
+            'triptan', 'imigran', 'maxalt', 'zomig', 'relpax', 'naramig', 'almogran', 'frovatriptan',
+            'rimegepant', 'vydura', 'erenumab', 'aimovig', 'fremanezumab', 'ajovy', 'galcanezumab', 'emgality'
+        ]
+    },
+    {
+        id: 'epilepsie', stijl: 'strook', icoon: 'neurology', kleurStrook: '#9333ea', naam: 'Anti-epileptica', kleur: '#f3e8ff', aan: true,
+        // Gabapentine en pregabaline staan bij de zenuwpijnmedicatie.
+        woorden: ['valpro', 'depakine', 'levetiracetam', 'keppra', 'lamotrigine', 'lamictal', 'carbamazepine', 'tegretol',
+            'oxcarbazepine', 'trileptal', 'fenytoine', 'epanutin', 'topiramaat', 'lacosamide', 'brivaracetam',
+            'ethosuximide', 'fenobarbital', 'perampanel', 'zonisamide', 'cenobamaat', 'clobazam']
+    },
+    {
+        id: 'blaas', stijl: 'strook', icoon: 'bladder', kleurStrook: '#0369a1', naam: 'Blaasmedicatie', kleur: '#e0f2fe', aan: true,
+        woorden: ['solifenacine', 'vesicare', 'tolterodine', 'oxybutynine', 'darifenacine', 'fesoterodine', 'trospium',
+            'mirabegron', 'betmiga']
+    },
+    {
+        id: 'antibiotica', stijl: 'strook', icoon: 'bacteria', kleurStrook: '#b91c1c', naam: 'Antibiotica', kleur: '#fee2e2', aan: true,
+        woorden: ['amoxicil', 'clavulaan', 'feneticil', 'flucloxacil', 'benzylpenicil', 'fenoxymethylpenicil', 'azitromycine',
+            'claritromycine', 'erytromycine', 'doxycycline', 'minocycline', 'tetracycline', 'nitrofurantoine', 'fosfomycine',
+            'trimethoprim', 'cotrimoxazol', 'sulfamethoxazol', 'ciprofloxacine', 'levofloxacine', 'moxifloxacine',
+            'ofloxacine', 'clindamycine', 'cefalexine', 'cefuroxim', 'ceftriaxon', 'metronidazol', 'vancomycine',
+            'rifampicine', 'fusidinezuur', 'mupirocine', 'augmentin', 'furadantine', 'monuril']
     },
     {
         id: 'zenuwpijn', stijl: 'strook', icoon: 'nerve', kleurStrook: '#65a30d', naam: 'Zenuwpijnmedicatie', kleur: '#ecfccb', aan: true,

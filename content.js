@@ -1449,6 +1449,7 @@ function medicijn_clearRegel(receptRegel) {
     receptRegel.style.backgroundRepeat = '';
     receptRegel.style.backgroundPosition = '';
     receptRegel.style.backgroundSize = '';
+    receptRegel.style.opacity = '';
     receptRegel.classList.remove(...Array.from(receptRegel.classList).filter((c) => c.startsWith('medicijn-')));
     receptRegel.removeAttribute(MEDICIJN_MARK_ATTR);
 }
@@ -1480,24 +1481,157 @@ function medicijn_watermerk(receptRegel, groep) {
     receptRegel.style.backgroundSize = `${maat}px ${maat}px`;
 }
 
-// Kleine legenda boven de lijst: alleen de groepen die in deze lijst voorkomen, met aantal.
+// Eén regel boven de lijst: links het locatiefilter, rechts een compacte legenda. Beide worden los
+// van elkaar opnieuw opgebouwd; deze container blijft staan (ook als alle recepten verborgen zijn).
+function medicijn_kopbalk(root) {
+    let kop = root.querySelector('.bi-autorisatie-kop');
+    if (!kop) {
+        kop = document.createElement('div');
+        kop.className = 'bi-autorisatie-kop';
+        kop.style.cssText = 'display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px 16px;margin:4px 0 8px 0;font-size:12px;';
+    }
+    const eerste = root.querySelector('.rapport44-recept');
+    if (eerste && eerste.parentElement) {
+        if (kop.nextElementSibling !== eerste) eerste.parentElement.insertBefore(kop, eerste);
+    } else if (!kop.parentElement) {
+        root.insertBefore(kop, root.firstChild);
+    }
+    return kop;
+}
+
+// Compacte legenda: per groep in deze lijst alleen het icoon (of bij rij-groepen een gekleurd blokje)
+// met het aantal; naam in de tooltip. Klik = markeren: regels van andere groepen half doorzichtig.
 function medicijn_toonLegenda(root, gevonden) {
-    root.querySelectorAll('.' + MEDICIJN_LEGENDA_CLASS).forEach((n) => n.remove());
+    const kop = medicijn_kopbalk(root);
+    kop.querySelectorAll('.' + MEDICIJN_LEGENDA_CLASS).forEach((n) => n.remove());
     const groepen = Object.values(gevonden);
+    if (!gevonden[root.__biMarkGroep]) root.__biMarkGroep = null;
     if (!groepen.length) return;
     const legenda = document.createElement('div');
     legenda.className = MEDICIJN_LEGENDA_CLASS;
-    legenda.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px 0;font-size:12px;';
+    legenda.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-left:auto;';
     groepen.forEach(({ groep, aantal }) => {
-        const chip = document.createElement('span');
-        chip.textContent = `${groep.naam} (${aantal})`;
-        chip.style.cssText = groep.stijl === 'strook'
-            ? `background:#fff ${medicijn_icoonUrl(groep, 0.8)} no-repeat 4px center / 14px 14px;border:1px solid rgba(0,0,0,0.12);border-radius:10px;padding:1px 8px 1px 22px;color:#333;`
-            : `background:${groep.kleur};border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:1px 8px;color:#333;`;
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.dataset.groep = groep.id;
+        chip.title = `${groep.naam} — ${aantal} ${aantal === 1 ? 'regel' : 'regels'} (klik om te markeren)`;
+        chip.textContent = String(aantal);
+        chip.style.cssText = 'display:inline-flex;align-items:center;height:20px;border-radius:10px;cursor:pointer;font-size:11px;color:#333;'
+            + 'border:1px solid rgba(0,0,0,0.12);'
+            + (groep.stijl === 'strook'
+                ? `background:#fff ${medicijn_icoonUrl(groep, 0.85)} no-repeat 3px center / 15px 15px;padding:0 6px 0 21px;`
+                : `background:#fff;padding:0 6px 0 4px;`);
+        if (groep.stijl !== 'strook') {
+            const blokje = document.createElement('span');
+            blokje.style.cssText = `display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;background:${groep.kleur};border:1px solid rgba(0,0,0,0.15);`;
+            chip.insertBefore(blokje, chip.firstChild);
+        }
+        chip.addEventListener('click', () => {
+            root.__biMarkGroep = root.__biMarkGroep === groep.id ? null : groep.id;
+            medicijn_pasMarkeringToe(root);
+        });
         legenda.appendChild(chip);
     });
-    const eerste = root.querySelector('.rapport44-recept');
-    if (eerste && eerste.parentElement) eerste.parentElement.insertBefore(legenda, eerste);
+    kop.appendChild(legenda);
+    medicijn_pasMarkeringToe(root);
+}
+
+// Eén groep per regel: de eerste in de lijst wint.
+function medicijn_groepVoorNaam(groepen, naam) {
+    const naamNorm = medicijn_normalize(naam);
+    return groepen.find((groep) =>
+        // "fluticason+neus": alle delen moeten in de naam staan.
+        groep.woordenNorm.some((w) => w.split('+').every((d) => naamNorm.includes(d)))
+        && !groep.nietNorm.some((w) => naamNorm.includes(w))) || null; // bv. neusspray bij longmedicatie
+}
+
+// "Gemarkeerd goedkeuren" links van Bricks' "Alles goedkeuren": keurt de nog open regels van de in de
+// legenda gemarkeerde groep goed, alleen in zichtbare recepten (locatie- en zoekfilter tellen mee).
+// Net als "Alles goedkeuren" alleen in Bricks' model; verwerken doet de gebruiker zelf.
+const MEDICIJN_GEMARKEERD_CLASS = 'bi-gemarkeerd-goedkeuren';
+
+function medicijn_gemarkeerdKnop(root) {
+    const alles = [...document.querySelectorAll('button')].find((b) => /^Alles goedkeuren$/i.test((b.textContent || '').trim()));
+    let knop = document.querySelector('.' + MEDICIJN_GEMARKEERD_CLASS);
+    if (!alles) {
+        if (knop) knop.remove();
+        return;
+    }
+    if (!knop) {
+        knop = document.createElement('button');
+        knop.type = 'button';
+        knop.textContent = 'Gemarkeerd goedkeuren';
+        knop.addEventListener('click', () => {
+            knop.blur(); // anders blijft Bricks' focus-kleur (donkergroen) staan
+            medicijn_gemarkeerdGoedkeuren(medicijn_findRapportRoot() || root, knop);
+        });
+    }
+    // Zelfde maat als Bricks' knop, kleur zoals "Export" in het briefvenster (pastelgroen, groene letters).
+    knop.className = [...alles.classList].filter((c) => !/^btn-(primary|secondary|success|danger|warning|info|light|dark)(-light)?$/.test(c))
+        .concat('btn-secondary-light', MEDICIJN_GEMARKEERD_CLASS).join(' ');
+    [...alles.attributes].forEach((a) => { if (a.name.startsWith('data-v-')) knop.setAttribute(a.name, ''); });
+    if (alles.style.cssText) knop.style.cssText = alles.style.cssText;
+    if (knop.nextElementSibling !== alles) alles.parentElement.insertBefore(knop, alles);
+    medicijn_werkGemarkeerdKnopBij(root);
+}
+
+function medicijn_werkGemarkeerdKnopBij(root) {
+    const knop = document.querySelector('.' + MEDICIJN_GEMARKEERD_CLASS);
+    if (!knop) return;
+    const groep = root.__biMarkGroep && (root.__biGroepen || []).find((g) => g.id === root.__biMarkGroep);
+    knop.disabled = !groep;
+    knop.style.opacity = groep ? '' : '0.5';
+    knop.title = groep
+        ? `Keurt alle nog open regels "${groep.naam}" goed in de zichtbare recepten`
+        : 'Markeer eerst een medicatiegroep (klik op een icoon boven de lijst)';
+}
+
+async function medicijn_gemarkeerdGoedkeuren(root, knop) {
+    const groep = root.__biMarkGroep && (root.__biGroepen || []).find((g) => g.id === root.__biMarkGroep);
+    if (!groep || knop.__biBezig) return;
+    knop.__biBezig = true;
+    try {
+        if (root.__biLocVerborgen && !(await medicijn_syncVerborgen(root, false))) {
+            window.alert('Het locatiefilter kon niet worden toegepast; er is niets goedgekeurd.');
+            return;
+        }
+        const recepten = await window.bricksBridge.autorisatieOpenRegels();
+        const items = [];
+        (recepten || []).forEach((r) => {
+            if (!r.show) return;
+            r.regels.forEach((g) => {
+                if (!g.open || medicijn_groepVoorNaam(root.__biGroepen, g.naam) !== groep) return;
+                if (g.status !== 'Afgekeurd' && g.status !== 'Goedgekeurd') items.push({ i: r.i, j: g.j });
+            });
+        });
+        if (!items.length) {
+            window.alert(`Geen open regels "${groep.naam}" om goed te keuren.`);
+            return;
+        }
+        // Geen bevestiging: dit zet alleen de status, Bricks' "Bevestigen" verwerkt het pas echt.
+        const res = await window.bricksBridge.autorisatieZetStatus(items, 'Goedgekeurd');
+        if (res.zonderProxy) {
+            window.alert(`${res.zonderProxy} regel(s) konden niet worden goedgekeurd; controleer de lijst.`);
+        }
+    } catch (e) {
+        console.warn('Gemarkeerd goedkeuren mislukt', e);
+        window.alert('Gemarkeerd goedkeuren is mislukt; er is mogelijk niets goedgekeurd. Controleer de lijst.');
+    } finally {
+        knop.__biBezig = false;
+    }
+}
+
+function medicijn_pasMarkeringToe(root) {
+    const id = root.__biMarkGroep;
+    root.querySelectorAll('.rapport44-recept-regel').forEach((rr) => {
+        rr.style.opacity = id && rr.getAttribute(MEDICIJN_MARK_ATTR) !== id ? '0.3' : '';
+    });
+    root.querySelectorAll('.' + MEDICIJN_LEGENDA_CLASS + ' [data-groep]').forEach((chip) => {
+        const aan = chip.dataset.groep === id;
+        chip.style.boxShadow = aan ? '0 0 0 2px #2c7a7b' : '';
+        chip.style.opacity = id && !aan ? '0.5' : '';
+    });
+    medicijn_werkGemarkeerdKnopBij(root);
 }
 
 function medicijn_markeringen() {
@@ -1517,7 +1651,13 @@ function medicijn_markeringen() {
 
         const recepten = root.querySelectorAll('.rapport44-recept');
         console.log(`Found ${recepten.length} recepten to process`);
-        if (!recepten.length) return;
+        if (!recepten.length) {
+            // Alles weggefilterd op locatie: de filterknoppen moeten blijven staan.
+            if (options.medicijnLocaties !== false && root.querySelector('.' + MEDICIJN_LOC_FILTER_CLASS)) {
+                medicijn_toonLocaties(root, recepten, options).catch((e) => console.warn('Locaties in autorisatie mislukt', e));
+            }
+            return;
+        }
 
         const groepen = medicijn_groepenUitOpties(options)
             .filter((g) => g.aan !== false && Array.isArray(g.woorden) && g.woorden.length)
@@ -1536,12 +1676,8 @@ function medicijn_markeringen() {
                 if (!medicijnDiv) return;
 
                 const medicijnNaam = medicijnDiv.textContent.trim();
-                const naamNorm = medicijn_normalize(medicijnNaam);
-
-                for (const groep of groepen) {
-                    // "fluticason+neus": alle delen moeten in de naam staan.
-                    if (!groep.woordenNorm.some((w) => w.split('+').every((d) => naamNorm.includes(d)))) continue;
-                    if (groep.nietNorm.some((w) => naamNorm.includes(w))) continue; // bv. neusspray bij longmedicatie
+                const groep = medicijn_groepVoorNaam(groepen, medicijnNaam);
+                if (groep) {
                     console.log(`${groep.id} gevonden: ${medicijnNaam}`);
                     // Oorspronkelijke risicogroepen: hele regel. Overige groepen: alleen een icoon (watermerk)
                     // vooraan, zodat de risicomedicatie eruit blijft springen.
@@ -1555,7 +1691,6 @@ function medicijn_markeringen() {
                     receptRegel.__biGroep = groep;
                     gevonden[groep.id] = gevonden[groep.id] || { groep, aantal: 0 };
                     gevonden[groep.id].aantal++;
-                    break; // één groep per regel: de eerste in de lijst wint
                 }
 
                 // "1 herhalingen" accent (exacte tekst zoals Bricks toont)
@@ -1567,9 +1702,14 @@ function medicijn_markeringen() {
                 }
             });
         });
+        root.__biGroepen = groepen;
         medicijn_toonLegenda(root, gevonden);
+        medicijn_gemarkeerdKnop(root);
         if (options.medicijnLabwaarden !== false) {
             medicijn_toonLabwaarden(recepten).catch((e) => console.warn('Labwaarden in autorisatie mislukt', e));
+        }
+        if (options.medicijnLocaties !== false) {
+            medicijn_toonLocaties(root, recepten, options).catch((e) => console.warn('Locaties in autorisatie mislukt', e));
         }
     });
 }
@@ -1666,6 +1806,23 @@ function medicijn_labNiveau(key, w, groep, rustig) {
     return w.afwijkend ? 'geel' : '';
 }
 
+// patientId van een recept-blok, uit de bridge-lijst (GetReceptRegels). Zelfde volgorde als de API;
+// voor de zekerheid de naam controleren. Sinds okt 2026 is de title "Open dossier van Dhr. Jansen (47)
+// 26-03-1979" en de tekst "… • <zorgverlener>"; de API geeft Patient = "Dhr. Jansen (47) 26-03-1979".
+function medicijn_patientIdVoorRecept(recept, i, lijst) {
+    const naamEl = recept.querySelector('[title^="Open dossier"]');
+    const titel = naamEl ? (naamEl.getAttribute('title') || '') : '';
+    const naam = titel.replace(/^Open dossier( van)?\s*/i, '').trim()
+        || (naamEl ? naamEl.textContent.split('•')[0].trim() : '');
+    const zelfde = (x) => !!x && !!naam && (x.patient.trim() === naam || naam.startsWith(x.patient.trim()));
+    let patientId = zelfde(lijst[i]) ? lijst[i].patientId : null;
+    if (!patientId) {
+        const kandidaten = [...new Set(lijst.filter(zelfde).map((x) => x.patientId))];
+        if (kandidaten.length === 1) patientId = kandidaten[0];
+    }
+    return patientId > 0 ? patientId : null;
+}
+
 async function medicijn_toonLabwaarden(receptenDom) {
     const nodig = Array.from(receptenDom).some((r) =>
         Array.from(r.querySelectorAll('.rapport44-recept-regel')).some((rr) => medicijn_labKeysVoorRegel(rr).length));
@@ -1675,15 +1832,8 @@ async function medicijn_toonLabwaarden(receptenDom) {
 
     for (let i = 0; i < receptenDom.length; i++) {
         const recept = receptenDom[i];
-        // Zelfde volgorde als de API; voor de zekerheid de naam controleren.
-        const naamEl = recept.querySelector('[title="Open dossier"]');
-        const naam = naamEl ? naamEl.textContent.trim() : '';
-        let patientId = lijst[i] && lijst[i].patient.trim() === naam ? lijst[i].patientId : null;
-        if (!patientId) {
-            const kandidaten = [...new Set(lijst.filter((x) => x.patient.trim() === naam).map((x) => x.patientId))];
-            if (kandidaten.length === 1) patientId = kandidaten[0];
-        }
-        if (!(patientId > 0)) continue;
+        const patientId = medicijn_patientIdVoorRecept(recept, i, lijst);
+        if (!patientId) continue;
 
         const regels = Array.from(recept.querySelectorAll('.rapport44-recept-regel'))
             .filter((rr) => medicijn_labKeysVoorRegel(rr).length);
@@ -1709,7 +1859,14 @@ async function medicijn_toonLabwaarden(receptenDom) {
                 const w = labs[key];
                 const chip = document.createElement('span');
                 const oud = w && (Date.now() - w.datum.getTime()) > 396 * 86400000;
-                chip.textContent = w ? `${def.label} ${w.tekst} ${medicijn_maandJaar(w.datum)}` : `${def.label} onbekend`;
+                chip.textContent = w ? `${def.label} ${w.tekst} ` : `${def.label} onbekend`;
+                if (w) {
+                    // Datum minder opvallend dan de waarde.
+                    const datum = document.createElement('span');
+                    datum.textContent = medicijn_maandJaar(w.datum);
+                    datum.style.opacity = '0.5';
+                    chip.appendChild(datum);
+                }
                 chip.title = w ? `${w.naam}: ${w.tekst}${w.eenheid ? ' ' + w.eenheid : ''} op ${w.datum.toLocaleDateString('nl-NL')}`
                     + (w.afwijkend ? ' (afwijkend volgens lab)' : '') + (oud ? ' — ouder dan 13 maanden' : '')
                     : `Geen ${def.label} gevonden in de metingen van deze patiënt`;
@@ -1726,6 +1883,298 @@ async function medicijn_toonLabwaarden(receptenDom) {
             naamMed.appendChild(houder);
         });
     }
+}
+
+// --- Praktijklocatie per patiënt (bolletje + filter op werkgroep) --------------------------------
+// Patient.GetLocaties geeft per patiënt [{ Id, LocationName, LocationColor }], net als het bolletje
+// rechtsboven in het dossier. Werkgroepen (opties, bv. "Plantage" en "Citadel + Prinsenhof") bundelen
+// locaties. Patiënten zonder locatie, of alleen met locaties buiten elke groep (bv. Telefonisch),
+// horen bij elke groep: niemand valt tussen wal en schip. Het filter verbergt recept-blokken en zet
+// via de bridge show = false op Bricks' eigen recept-objecten, zodat "Alles goedkeuren/afkeuren" ze
+// overslaat.
+
+const MEDICIJN_LOC_CACHE = new Map(); // patientId → Promise<[{ naam, kleur }]>
+const MEDICIJN_LOC_FILTER_CLASS = 'bi-locatie-filter';
+const MEDICIJN_LOC_GEEN = '(geen locatie)';
+// Standaard per computer (chrome.storage.local, ook te kiezen in de opties): 'alle' of de naam van een
+// werkgroep. Een klik in de lijst geldt voor deze pagina; "Bewaar als standaard" schrijft hem weg.
+const MEDICIJN_LOC_KEUZE = 'medicijnLocatieKeuze';
+let medicijn_locKeuzeNu = null; // keuze op deze pagina (null = de standaard)
+
+function medicijn_locKeuze() {
+    return new Promise((resolve) => {
+        try {
+            chrome.storage.local.get(MEDICIJN_LOC_KEUZE, (d) => resolve((d && d[MEDICIJN_LOC_KEUZE]) || 'alle'));
+        } catch (e) {
+            resolve('alle');
+        }
+    });
+}
+
+function medicijn_bewaarLocKeuze(keuze) {
+    try {
+        chrome.storage.local.set({ [MEDICIJN_LOC_KEUZE]: keuze });
+    } catch (e) { /* extensie herladen: keuze geldt alleen voor nu */ }
+}
+
+function medicijn_locSleutel(naam) {
+    return medicijn_normalize(naam).trim().replace(/^locatie\s+/, '');
+}
+
+// "Plantage = Locatie Plantage" per regel; locaties met komma's, "Locatie " mag weg.
+function medicijn_locatieGroepen(tekst) {
+    return String(tekst || '').split('\n').map((regel) => {
+        const m = regel.match(/^\s*([^=]+?)\s*=\s*(.+)$/);
+        if (!m) return null;
+        const locaties = m[2].split(',').map(medicijn_locSleutel).filter(Boolean);
+        return locaties.length ? { naam: m[1], locaties } : null;
+    }).filter(Boolean);
+}
+
+// Zoals Bricks zelf (LocationTags): het getal is 0xRRGGBB. Negatief/ongeldig → grijs.
+function medicijn_tcolor(c) {
+    const n = parseInt(c, 10);
+    if (!Number.isFinite(n) || n < 0) return '#a0aec0';
+    return '#' + (n & 0xffffff).toString(16).padStart(6, '0');
+}
+
+function medicijn_locatiesVoorPatient(patientId) {
+    if (!MEDICIJN_LOC_CACHE.has(patientId)) {
+        MEDICIJN_LOC_CACHE.set(patientId, (async () => {
+            const rv = medicijn_rv(await window.bricksBridge.doApi('Patient', 'GetLocaties', { patientId }, true)) || [];
+            return (Array.isArray(rv) ? rv : []).map((l) => ({
+                naam: String(l.LocationName || l.Id || '').trim(),
+                kleur: medicijn_tcolor(l.LocationColor)
+            })).filter((l) => l.naam);
+        })().catch((e) => {
+            MEDICIJN_LOC_CACHE.delete(patientId);
+            throw e;
+        }));
+    }
+    return MEDICIJN_LOC_CACHE.get(patientId);
+}
+
+function medicijn_locKort(naam) {
+    return naam.replace(/^Locatie\s+/i, '');
+}
+
+// Knoppen en aantallen komen uit de volledige API-lijst: Bricks haalt recepten met show === false
+// helemaal uit de DOM (v-if), dus de DOM alleen zou een uitgezette locatie laten verdwijnen.
+async function medicijn_toonLocaties(root, receptenDom, options) {
+    if (!window.bricksBridge) return;
+    const lijst = await window.bricksBridge.autorisatieRecepten();
+    if (!Array.isArray(lijst) || !lijst.length) return;
+
+    const perPatient = new Map(); // patientId → [{ naam, kleur }] (null = ophalen mislukt)
+    await Promise.all([...new Set(lijst.map((x) => x.patientId).filter((id) => id > 0))].map(async (id) => {
+        try {
+            perPatient.set(id, await medicijn_locatiesVoorPatient(id));
+        } catch (e) {
+            perPatient.set(id, null);
+        }
+    }));
+    const namenVan = (id) => {
+        const l = perPatient.get(id);
+        return !l ? [] : l.length ? l.map((x) => x.naam) : [MEDICIJN_LOC_GEEN];
+    };
+
+    const kleuren = new Map(); // locatienaam → kleur
+    lijst.forEach((x) => (perPatient.get(x.patientId) || []).forEach((l) => kleuren.set(l.naam, l.kleur)));
+
+    Array.from(receptenDom).forEach((recept, i) => {
+        recept.querySelectorAll('.bi-med-loc').forEach((n) => n.remove());
+        const patientId = medicijn_patientIdVoorRecept(recept, i, lijst);
+        recept.__biPatientId = patientId;
+        const locaties = patientId ? perPatient.get(patientId) : null;
+        const naamEl = recept.querySelector('[title^="Open dossier"]');
+        if (!naamEl || !locaties) return;
+        const houder = document.createElement('span');
+        houder.className = 'bi-med-loc';
+        houder.style.cssText = 'display:inline-flex;gap:2px;margin-right:5px;vertical-align:middle;';
+        (locaties.length ? locaties : [{ naam: MEDICIJN_LOC_GEEN, kleur: null }]).forEach((l) => {
+            const dot = document.createElement('span');
+            dot.title = l.kleur ? l.naam : 'Geen praktijklocatie bekend';
+            dot.style.cssText = 'display:inline-block;width:10px;height:10px;border-radius:50%;'
+                + (l.kleur ? `background:${l.kleur};border:1px solid rgba(255,255,255,0.9);`
+                    : 'border:1px dashed rgba(255,255,255,0.9);');
+            houder.appendChild(dot);
+        });
+        naamEl.insertBefore(houder, naamEl.firstChild);
+    });
+
+    medicijn_locatieFilter(root, lijst, namenVan, kleuren, options, await medicijn_locKeuze());
+}
+
+function medicijn_locatieFilter(root, lijst, namenVan, kleuren, options, opgeslagen) {
+    const kop = medicijn_kopbalk(root);
+    kop.querySelectorAll('.' + MEDICIJN_LOC_FILTER_CLASS).forEach((n) => n.remove());
+    const groepen = medicijn_locatieGroepen(options.medicijnLocatieGroepen);
+    if (!groepen.length || !lijst.length) return;
+
+    const inGroep = (groep, sleutel) => groep.locaties.includes(sleutel);
+    // Zichtbaar in groep: een van de locaties hoort bij de groep, of geen enkele locatie hoort bij
+    // een groep (geen locatie, Telefonisch). Ophalen mislukt (geen namen) → altijd zichtbaar.
+    const zichtbaarIn = (groep, patientId) => {
+        const sleutels = namenVan(patientId).filter((n) => n !== MEDICIJN_LOC_GEEN).map(medicijn_locSleutel);
+        const bekend = sleutels.filter((s) => groepen.some((g) => inGroep(g, s)));
+        return !bekend.length || bekend.some((s) => inGroep(groep, s));
+    };
+
+    const bestaat = (k) => k === 'alle' || groepen.some((g) => g.naam === k);
+    let standaard = bestaat(opgeslagen) ? opgeslagen : 'alle';
+    let keuze = bestaat(medicijn_locKeuzeNu) ? medicijn_locKeuzeNu : standaard;
+
+    const balk = document.createElement('div');
+    balk.className = MEDICIJN_LOC_FILTER_CLASS;
+    balk.style.cssText = 'font-size:12px;';
+    const rij = document.createElement('div');
+    rij.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:8px;';
+    const label = document.createElement('span');
+    label.textContent = 'Locatie:';
+    label.style.cssText = 'color:#4a5568;font-weight:600;';
+    rij.appendChild(label);
+    const segment = document.createElement('div');
+    segment.style.cssText = 'display:inline-flex;border:1px solid #cbd5e0;border-radius:6px;overflow:hidden;background:#fff;';
+    rij.appendChild(segment);
+    // Afwijkend van de standaard: aanbieden om deze keuze te bewaren (bijna niemand opent de opties).
+    const bewaar = document.createElement('button');
+    bewaar.type = 'button';
+    bewaar.style.cssText = 'border:0;background:none;padding:0;font-size:12px;color:#2c7a7b;cursor:pointer;text-decoration:underline;';
+    bewaar.addEventListener('click', () => {
+        medicijn_bewaarLocKeuze(keuze);
+        standaard = keuze;
+        werkBewaarBij(true);
+    });
+    rij.appendChild(bewaar);
+    balk.appendChild(rij);
+    const melding = document.createElement('div');
+    melding.style.cssText = 'display:none;margin-top:6px;padding:4px 8px;border-radius:4px;background:#fff4e5;border:1px solid #f6ad55;color:#9c4221;';
+    balk.appendChild(melding);
+
+    const opties = [{ naam: 'alle', label: 'Alle', groep: null }]
+        .concat(groepen.map((g) => ({ naam: g.naam, label: g.naam, groep: g })));
+    const aantalIn = (o) => (o.groep ? lijst.filter((x) => zichtbaarIn(o.groep, x.patientId)).length : lijst.length);
+
+    const pasToe = () => {
+        const actief = opties.find((o) => o.naam === keuze) || opties[0];
+        const verborgenPatient = (id) => !!actief.groep && !zichtbaarIn(actief.groep, id);
+        const ids = [...new Set(lijst.map((x) => x.patientId).filter((id) => id > 0 && verborgenPatient(id)))];
+        const verborgen = lijst.filter((x) => verborgenPatient(x.patientId)).length;
+        // Direct zichtbaar effect; Bricks' eigen hertekening (v-if op show) volgt via de bridge.
+        root.querySelectorAll('.rapport44-recept').forEach((r) => {
+            r.style.display = r.__biPatientId && verborgenPatient(r.__biPatientId) ? 'none' : '';
+        });
+        segment.querySelectorAll('button').forEach((b) => {
+            const aan = b.dataset.keuze === actief.naam;
+            b.style.background = aan ? '#2c7a7b' : '#fff';
+            b.style.color = aan ? '#fff' : '#2d3748';
+            b.style.fontWeight = aan ? '600' : '400';
+        });
+        melding.textContent = '';
+        melding.style.display = verborgen ? '' : 'none';
+        if (verborgen) {
+            melding.appendChild(document.createTextNode(
+                `Je ziet alleen ${actief.label} — ${verborgen} recept${verborgen === 1 ? '' : 'en'} van andere locaties verborgen · `));
+            const alles = document.createElement('a');
+            alles.href = '#';
+            alles.textContent = 'Toon alles';
+            alles.style.cssText = 'color:#9c4221;font-weight:600;text-decoration:underline;';
+            alles.addEventListener('click', (e) => {
+                e.preventDefault();
+                kies('alle');
+            });
+            melding.appendChild(alles);
+        }
+        root.__biLocVerborgen = verborgen;
+        root.__biLocIds = ids;
+        return medicijn_syncVerborgen(root, true); // de bridge hertekent alleen als er voor Bricks iets verandert
+    };
+    const werkBewaarBij = (netBewaard) => {
+        bewaar.style.display = keuze !== standaard || netBewaard ? '' : 'none';
+        bewaar.disabled = !!netBewaard;
+        bewaar.textContent = netBewaard ? '✓ bewaard als standaard' : 'Bewaar als standaard';
+        bewaar.style.textDecoration = netBewaard ? 'none' : 'underline';
+        bewaar.title = netBewaard ? '' : 'Voortaan op deze computer met deze keuze beginnen (ook te wijzigen in de instellingen)';
+    };
+    const kies = (naam) => {
+        keuze = naam;
+        medicijn_locKeuzeNu = naam;
+        pasToe();
+        werkBewaarBij(false);
+    };
+
+    opties.forEach((o, i) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.dataset.keuze = o.naam;
+        b.style.cssText = 'display:inline-flex;align-items:center;gap:4px;border:0;padding:2px 10px;cursor:pointer;font-size:12px;'
+            + (i ? 'border-left:1px solid #cbd5e0;' : '');
+        if (o.groep) {
+            // Bolletjes in de kleuren van de locaties in deze groep (voor zover in de lijst aanwezig).
+            o.groep.locaties.forEach((s) => {
+                const kleur = [...kleuren.entries()].find(([naam]) => medicijn_locSleutel(naam) === s);
+                if (!kleur) return;
+                const dot = document.createElement('span');
+                dot.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;background:${kleur[1]};`;
+                b.appendChild(dot);
+            });
+            b.title = 'Toon recepten van deze locaties, plus patiënten zonder (vaste) locatie';
+        }
+        b.appendChild(document.createTextNode(`${o.label} (${aantalIn(o)})`));
+        b.addEventListener('click', () => kies(o.naam));
+        segment.appendChild(b);
+    });
+
+    kop.insertBefore(balk, kop.firstChild); // kopbalk blijft staan, ook als alles verborgen is
+    pasToe();
+    werkBewaarBij(false);
+    medicijn_bewaakAllesKnoppen();
+}
+
+// Patiënten van verborgen recepten doorgeven aan de bridge: hun show is dan false in Bricks' model,
+// ook als Bricks zijn eigen filter opnieuw uitrekent. herteken: Bricks de lijst laten vernieuwen.
+// Resultaat: true als het gelukt is; root.__biLocSync bewaart de laatste poging.
+function medicijn_syncVerborgen(root, herteken) {
+    const ids = root.__biLocIds || [];
+    // Bricks' zoekveld boven de lijst ("Zoek"), zodat hertekenen de zoektekst niet wist.
+    let zoekveld = null;
+    for (let el = root.parentElement; el && !zoekveld; el = el.parentElement) {
+        zoekveld = el.querySelector('input[placeholder="Zoek"], input[placeholder*="Zoek naar patiënt of voorschrijver"]');
+    }
+    root.__biLocSync = window.bricksBridge.autorisatieVerberg(ids, herteken ? (zoekveld ? zoekveld.value : '') : null)
+        .then(() => true, (e) => {
+            console.warn('Locatiefilter: verbergen in Bricks mislukt', e);
+            return false;
+        });
+    return root.__biLocSync;
+}
+
+// Vóór Bricks' "Alles goedkeuren/afkeuren": eerst de show-vlaggen opnieuw zetten (Bricks' eigen
+// zoek-/waarschuwingsfilter kan ze intussen overschreven hebben), dan de klik alsnog doorgeven.
+// Lukt dat niet, dan waarschuwen dat ook verborgen recepten meegaan.
+function medicijn_bewaakAllesKnoppen() {
+    document.querySelectorAll('button').forEach((btn) => {
+        const t = (btn.textContent || '').trim();
+        if (!/^Alles (goedkeuren|afkeuren)$/i.test(t) || btn.__biLocBewaakt) return;
+        btn.__biLocBewaakt = true;
+        btn.addEventListener('click', (e) => {
+            if (btn.__biDoorlaten) return;
+            const root = medicijn_findRapportRoot();
+            if (!root || !root.__biLocVerborgen) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            medicijn_syncVerborgen(root, false).then((ok) => {
+                if (!ok && !window.confirm(`Let op: het locatiefilter kon de verborgen recepten niet uitsluiten.\n\n`
+                    + `"${t}" geldt daardoor ook voor de ${root.__biLocVerborgen} verborgen recept(en). Doorgaan?`)) return;
+                btn.__biDoorlaten = true;
+                try {
+                    btn.click();
+                } finally {
+                    btn.__biDoorlaten = false;
+                }
+            });
+        }, true);
+    });
 }
 
 function medicijn_scheduleMarkeringen(delayMs) {

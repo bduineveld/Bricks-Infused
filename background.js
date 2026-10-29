@@ -8,6 +8,8 @@ const defaultOptions = {
   medicijnMarkeringen: true,
   medicijnGroepenUit: [],
   medicijnLabwaarden: true,
+  medicijnLocaties: true,
+  medicijnLocatieGroepen: 'Plantage = Locatie Plantage\nCitadel + Prinsenhof = Locatie Citadel, Locatie Prinsenhof',
   medicijnHoogrisico: null,
   medicijnEigenGroepen: [],
   pdfExport: true,

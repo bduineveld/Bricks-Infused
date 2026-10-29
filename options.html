@@ -472,6 +472,22 @@
       order: 1;
     }
 
+    /* Alleen de schakelaar is klikbaar; de tekst klapt uit (indien uitklapbaar). */
+    .checkbox-item > input[type="checkbox"],
+    .mg-optie input[type="checkbox"] {
+      cursor: pointer;
+    }
+
+    .checkbox-item:not(.has-expandable) > label,
+    label.mg-optie {
+      cursor: default;
+    }
+
+    .checkbox-item.has-expandable,
+    .checkbox-item.has-expandable > label {
+      cursor: pointer;
+    }
+
     .checkbox-item > .opt-icon {
       order: 0;
     }
@@ -494,6 +510,207 @@
     }
 
     /* Ingeklapte sectie telt niet mee in de tussenruimte van de lijst. */
+    .mg-paneel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .mg-kaart {
+      background: #f7fafc;
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid #c53030;
+      border-radius: 8px;
+      padding: 12px 16px;
+    }
+
+    #mg-locatie-instellingen {
+      margin-top: 10px;
+      padding-left: 26px;
+    }
+
+    #mg-locatie-instellingen.uit {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    .mg-kaart-kop {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: #2d3748;
+    }
+
+    .mg-optie {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 0 0 10px 0;
+      font-size: 13px;
+      color: #4a5568;
+      cursor: pointer;
+    }
+
+    .mg-optie:last-child {
+      margin-bottom: 0;
+    }
+
+    .mg-optie input {
+      margin-top: 2px;
+    }
+
+    .mg-optie strong {
+      display: block;
+      color: #2d3748;
+    }
+
+    .mg-uitleg {
+      color: #718096;
+      font-size: 12px;
+      line-height: 1.5;
+      margin: 4px 0 0 0;
+    }
+
+    .mg-optie .mg-uitleg {
+      display: block;
+      margin: 0;
+    }
+
+    .mg-voorbeelden {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 6px;
+      margin-top: 6px;
+      font-size: 11px;
+      color: #718096;
+    }
+
+    .mg-chip {
+      font-size: 11px;
+      padding: 0 6px;
+      border-radius: 8px;
+      white-space: nowrap;
+      background: #fff;
+      border: 1px solid #cbd5e0;
+      color: #4a5568;
+    }
+
+    .mg-chip i {
+      font-style: normal;
+      opacity: 0.5;
+    }
+
+    .mg-chip.geel {
+      background: #fefcbf;
+      border-color: #ecc94b;
+      color: #744210;
+    }
+
+    .mg-chip.oranje {
+      background: #fff4e5;
+      border-color: #f6ad55;
+      color: #9c4221;
+      font-weight: 600;
+    }
+
+    .mg-veld {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 13px;
+      color: #4a5568;
+    }
+
+    .mg-veld select,
+    .mg-veld input[type="text"],
+    .mg-details textarea {
+      padding: 6px 8px;
+      border: 1px solid #cbd5e0;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: inherit;
+      background: #fff;
+      box-sizing: border-box;
+    }
+
+    .mg-veld select {
+      max-width: 320px;
+    }
+
+    .mg-details {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #4a5568;
+    }
+
+    .mg-details summary {
+      cursor: pointer;
+      color: #2c7a7b;
+    }
+
+    .mg-details textarea {
+      width: 100%;
+      margin-top: 4px;
+    }
+
+    .mg-sub {
+      margin: 12px 0 6px 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: #4a5568;
+    }
+
+    .mg-kaart-kop + .mg-sub {
+      margin-top: 0;
+    }
+
+    .mg-sub-rij {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-top: 14px;
+    }
+
+    .mg-sub-rij .mg-sub {
+      margin: 0 0 6px 0;
+    }
+
+    .mg-alles {
+      font-size: 12px;
+      color: #a0aec0;
+    }
+
+    .mg-link {
+      border: 0;
+      background: none;
+      padding: 0;
+      color: #2c7a7b;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .mg-link:hover {
+      text-decoration: underline;
+    }
+
+    .mg-hoogrisico {
+      margin-top: 8px;
+    }
+
+    .mg-standaard.uit .mg-std-naam {
+      color: #a0aec0;
+    }
+
+    .mg-std-lab {
+      font-size: 10px;
+      color: #718096;
+      background: #edf2f7;
+      border-radius: 6px;
+      padding: 0 5px;
+      white-space: nowrap;
+    }
+
     .mg-standaard-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
@@ -508,11 +725,6 @@
       color: #4a5568;
       cursor: pointer;
       padding: 3px 0;
-    }
-
-    .mg-std-lab {
-      font-size: 11px;
-      color: #a0aec0;
     }
 
     .mg-kleurvlak {
@@ -660,31 +872,87 @@
             <div class="checkbox-item has-expandable" id="medicijn-settings-item">
               <span class="opt-icon rood"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3.5a5 5 0 0 1 7.07 7.07l-7.07 7.07a5 5 0 0 1-7.07-7.07z"/><path d="M7 7l7 7"/></svg></span>
               <input type="checkbox" id="opt-medicijn">
-              <label for="opt-medicijn">Medicatie markeren in de autorisatielijst<span class="desc">Kleurt medicatie per groep: opiaten, benzo's, bloedverdunners, antidiabetica e.a. Uitklappen om groepen aan te passen.</span></label>
+              <label for="opt-medicijn">Medicatie markeren in de autorisatielijst<span class="desc">Kleurt risicomedicatie, zet een icoon per medicatiegroep en toont labwaarden en de praktijklocatie. Uitklappen voor de instellingen.</span></label>
               <button type="button" class="expand-toggle collapsed" data-target="medicijn-section" aria-label="Meer instellingen"></button>
             </div>
 
             <div class="expandable-section collapsed" id="medicijn-section">
-              <div style="background: #f7fafc; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #c53030;">
-                <label style="display: flex; align-items: center; gap: 8px; margin: 0 0 14px 0; color: #4a5568; font-size: 13px; cursor: pointer;">
-                  <input type="checkbox" id="opt-medicijn-lab">
-                  Toon recente labwaarden achter het medicijn (bv. eGFR bij DOAC's). Geel = afwijkend (eGFR &lt; 30, bij een DOAC
-                  &lt; 50); oranje = laatste waarde ouder dan 13 maanden of onbekend
-                </label>
-                <p style="margin: 0 0 8px 0; color: #4a5568; font-size: 14px; font-weight: 600;">Standaardgroepen</p>
-                <div id="medicijn-standaard-lijst" class="mg-standaard-grid"></div>
-                <label for="medicijn-hoogrisico" style="display: block; margin: 12px 0 4px 0; color: #4a5568; font-size: 13px;">
-                  Hoogrisicomedicatie <span style="color: #a0aec0;">— welke middelen? (gescheiden door komma's)</span>
-                </label>
-                <input type="text" id="medicijn-hoogrisico" style="width: 100%; padding: 6px 8px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 13px;">
+              <div class="mg-paneel">
 
-                <p style="margin: 18px 0 4px 0; color: #4a5568; font-size: 14px; font-weight: 600;">Eigen groepen</p>
-                <p style="margin: 0 0 8px 0; color: #718096; font-size: 12px; line-height: 1.5;">
-                  Eigen groepen gaan vóór de standaardgroepen: een regel krijgt de kleur van de eerste groep die past.
-                  Woorden mogen een deel van de medicijnnaam zijn (hoofdletters en accenten maken niet uit).
-                </p>
-                <div id="medicijn-eigen-lijst"></div>
-                <button type="button" id="medicijn-groep-toevoegen" class="btn btn-secondary btn-small">Eigen groep toevoegen</button>
+                <!-- 1. Labwaarden -->
+                <section class="mg-kaart">
+                  <h4 class="mg-kaart-kop">Labwaarden</h4>
+                  <label class="mg-optie">
+                    <input type="checkbox" id="opt-medicijn-lab">
+                    <span>
+                      <strong>Labwaarden achter het medicijn tonen</strong>
+                      <span class="mg-uitleg">Bijvoorbeeld eGFR bij een DOAC of LDL bij een statine.</span>
+                      <span class="mg-voorbeelden">
+                        <span class="mg-chip">eGFR 62 <i>mrt'26</i></span> in orde
+                        <span class="mg-chip geel">eGFR 27 <i>apr'26</i></span> afwijkend
+                        <span class="mg-chip oranje">LDL onbekend</span> &gt;13 maanden of onbekend
+                      </span>
+                    </span>
+                  </label>
+                </section>
+
+                <!-- 2. Praktijklocatie -->
+                <section class="mg-kaart" id="mg-locatie-kaart">
+                  <h4 class="mg-kaart-kop">Praktijklocatie</h4>
+                  <label class="mg-optie">
+                    <input type="checkbox" id="opt-medicijn-locatie">
+                    <span>
+                      <strong>Praktijklocatie tonen en filteren</strong>
+                      <span class="mg-uitleg">Gekleurd bolletje bij de naam, en boven de lijst een keuze per werkgroep.
+                        "Alles goedkeuren" slaat recepten van andere locaties over.</span>
+                    </span>
+                  </label>
+                  <div id="mg-locatie-instellingen">
+                  <label class="mg-veld">
+                    <span>Standaard op deze computer</span>
+                    <select id="opt-medicijn-locatiekeuze"></select>
+                  </label>
+                  <p class="mg-uitleg">In de autorisatielijst kun je ook wisselen, en daar met "Bewaar als standaard" je keuze
+                    vastleggen. Patiënten zonder locatie (of alleen "Telefonisch") zie je in elke werkgroep.</p>
+                  <details class="mg-details">
+                    <summary>Werkgroepen aanpassen</summary>
+                    <p class="mg-uitleg">Eén werkgroep per regel: <code>Naam = locatie, locatie</code>. "Locatie " voor de naam mag weg.</p>
+                    <textarea id="opt-medicijn-locatiegroepen" rows="3"></textarea>
+                  </details>
+                  </div>
+                </section>
+
+                <!-- 3. Medicatiegroepen -->
+                <section class="mg-kaart">
+                  <h4 class="mg-kaart-kop">Medicatiegroepen</h4>
+                  <p class="mg-sub">Hele regel gekleurd <span class="mg-uitleg">— valt het meest op</span></p>
+                  <div id="medicijn-rij-lijst" class="mg-standaard-grid"></div>
+                  <label class="mg-veld mg-hoogrisico">
+                    <span>Hoogrisicomedicatie: welke middelen? <span class="mg-uitleg">(gescheiden door komma's)</span></span>
+                    <input type="text" id="medicijn-hoogrisico">
+                  </label>
+
+                  <div class="mg-sub-rij">
+                    <p class="mg-sub">Icoon vooraan in de regel</p>
+                    <span class="mg-alles">
+                      <button type="button" class="mg-link" id="mg-strook-alles-aan">alles aan</button> ·
+                      <button type="button" class="mg-link" id="mg-strook-alles-uit">alles uit</button>
+                    </span>
+                  </div>
+                  <div id="medicijn-standaard-lijst" class="mg-standaard-grid"></div>
+                  <p class="mg-uitleg">Ga met de muis op een groep staan om te zien welke middelen eronder vallen.
+                    Het grijze label (bv. <span class="mg-std-lab">eGFR</span>) is de labwaarde die erbij getoond wordt.</p>
+                </section>
+
+                <!-- 4. Eigen groepen -->
+                <section class="mg-kaart">
+                  <h4 class="mg-kaart-kop">Eigen groepen</h4>
+                  <p class="mg-uitleg">Eigen groepen gaan vóór de standaardgroepen: een regel krijgt de eerste groep die past.
+                    Woorden mogen een deel van de medicijnnaam zijn (hoofdletters en accenten maken niet uit).</p>
+                  <div id="medicijn-eigen-lijst"></div>
+                  <button type="button" id="medicijn-groep-toevoegen" class="btn btn-secondary btn-small">Eigen groep toevoegen</button>
+                </section>
+
               </div>
             </div>
             <div class="checkbox-item has-expandable" id="uprevent-settings-item">

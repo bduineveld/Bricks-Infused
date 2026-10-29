@@ -26,7 +26,13 @@
     layoutResizeExecute: null,
     eventTrigger: null,
     // Autorisatielijst: patiënt per recept uit HisRapport44.GetReceptRegels (alleen id + naam).
-    autorisatieRecepten: []
+    autorisatieRecepten: [],
+    // Dezelfde recept-objecten die Bricks in de lijst gebruikt (s.value = ReturnValue).
+    autorisatieRaw: [],
+    autorisatieVerborgen: new Set(), // patientIds die het locatiefilter verbergt
+    autorisatieVerborgenSleutel: '',
+    autorisatieHertekendVoor: null,
+    autorisatieProxy: new WeakMap() // ruw recept-object → Bricks' reactieve (Vue) versie
   };
 
   function log() {
@@ -102,6 +108,9 @@
           const rv = r && r.ReturnValue;
           if (Array.isArray(rv)) {
             state.autorisatieRecepten = rv.map((x) => ({ patientId: x.PatientId, patient: String(x.Patient || '') }));
+            // Vóór Bricks' eigen verwerking (deze then staat eerder in de rij), zodat show meteen klopt.
+            rv.forEach(autorisatieShowAccessor);
+            state.autorisatieRaw = rv;
           }
         }).catch(() => { /* Bricks toont zelf de fout */ });
       }
@@ -109,6 +118,102 @@
     };
     wrapped.__biWrapped = true;
     B.doApi = wrapped;
+  }
+
+  // Locatiefilter: recepten van deze patiënten krijgen show === false. Bricks tekent alleen recepten
+  // met show (v-if) en "Alles goedkeuren/afkeuren" slaat de rest over. show wordt een getter op het
+  // ruwe object, zodat ook Bricks' eigen filter (zoeken, waarschuwingen) het locatiefilter respecteert.
+  function autorisatieShowAccessor(r) {
+    if (!r || typeof r !== 'object') return;
+    const d = Object.getOwnPropertyDescriptor(r, 'show');
+    if (d && d.get) return;
+    let waarde = d ? d.value : true;
+    Object.defineProperty(r, 'show', {
+      configurable: true,
+      enumerable: true,
+      // Via Vue's proxy is this de reactieve versie: die onthouden, zodat "Gemarkeerd goedkeuren"
+      // de status net als Bricks zelf via Vue kan zetten (en Bricks de lijst bijwerkt).
+      get() {
+        if (this && this !== r) state.autorisatieProxy.set(r, this);
+        return waarde && !state.autorisatieVerborgen.has(r.PatientId);
+      },
+      set(v) {
+        if (this && this !== r) state.autorisatieProxy.set(r, this);
+        waarde = v;
+      }
+    });
+  }
+
+  // Laat Bricks de lijst opnieuw filteren (zelfde zoektekst): dat schrijft show via Vue, waardoor
+  // de lijst hertekent met de getter hierboven.
+  function autorisatieHerteken(zoektekst) {
+    const app = document.getElementById('app');
+    const seen = new Set();
+    let exposed = null;
+    (function walk(vn) {
+      if (!vn || typeof vn !== 'object' || exposed || seen.has(vn) || seen.size > 200000) return;
+      seen.add(vn);
+      const c = vn.component;
+      if (c) {
+        if (c.exposed && typeof c.exposed.onSearchRapport === 'function' && c.type && c.type.__name === 'Rapport44') {
+          exposed = c.exposed;
+          return;
+        }
+        walk(c.subTree);
+      }
+      if (Array.isArray(vn.children)) vn.children.forEach(walk);
+      if (vn.suspense) walk(vn.suspense.activeBranch);
+    })(app && app._vnode);
+    if (!exposed) return false;
+    exposed.onSearchRapport(zoektekst || '');
+    return true;
+  }
+
+  function autorisatieVerberg(patientIds, zoektekst) {
+    const ids = (Array.isArray(patientIds) ? patientIds : []).filter((x) => x > 0).sort((a, b) => a - b);
+    const sleutel = ids.join(',');
+    const lijstNieuw = state.autorisatieHertekendVoor !== state.autorisatieRaw;
+    state.autorisatieVerborgen = new Set(ids);
+    let hertekend = false;
+    // Alleen als er voor Bricks iets verandert: ander filter, of een nieuwe lijst terwijl er iets uit staat.
+    if (zoektekst != null && (sleutel !== state.autorisatieVerborgenSleutel || (lijstNieuw && ids.length))) {
+      hertekend = autorisatieHerteken(zoektekst);
+    }
+    state.autorisatieVerborgenSleutel = sleutel;
+    state.autorisatieHertekendVoor = state.autorisatieRaw;
+    return { verborgen: ids.length, hertekend };
+  }
+
+  // Per zichtbaar recept de regels die nog niet beoordeeld zijn (voor "Gemarkeerd goedkeuren").
+  function autorisatieOpenRegels() {
+    return state.autorisatieRaw.map((r, i) => ({
+      i,
+      show: !!r.show,
+      regels: (r.ReceptRegels || []).map((g, j) => ({
+        j,
+        naam: String(g.Medicatie || ''),
+        open: g.AutorisatiestatusOrg === 'NogNietGeautoriseerd',
+        status: g.Autorisatiestatus
+      }))
+    }));
+  }
+
+  // Zet de status van regels [{ i, j }] zoals Bricks' "Alles goedkeuren" (alleen in het model; de
+  // gebruiker verwerkt daarna zelf). Alleen zichtbare recepten en regels die nog open staan.
+  function autorisatieZetStatus(items, status) {
+    if (status !== 'Goedgekeurd') throw new Error('Ongeldige status');
+    let gezet = 0;
+    let zonderProxy = 0;
+    (Array.isArray(items) ? items : []).forEach(({ i, j }) => {
+      const r = state.autorisatieRaw[i];
+      const g = r && r.ReceptRegels && r.ReceptRegels[j];
+      if (!g || !r.show || g.AutorisatiestatusOrg !== 'NogNietGeautoriseerd' || g.Autorisatiestatus === 'Afgekeurd') return;
+      const p = state.autorisatieProxy.get(r);
+      if (!p) { zonderProxy++; return; }
+      p.ReceptRegels[j].Autorisatiestatus = status;
+      gezet++;
+    });
+    return { gezet, zonderProxy };
   }
 
   function captureB(candidate) {
@@ -480,6 +585,12 @@
         return doApi(args.service, args.method, args.params, args.ignoreBusy);
       case 'autorisatieRecepten':
         return state.autorisatieRecepten;
+      case 'autorisatieVerberg':
+        return autorisatieVerberg(args.patientIds, args.zoektekst);
+      case 'autorisatieOpenRegels':
+        return autorisatieOpenRegels();
+      case 'autorisatieZetStatus':
+        return autorisatieZetStatus(args.items, args.status);
       case 'toggleLayoutResize':
         return toggleLayoutResize();
       case 'startZorgdomeinVerwijzing':
