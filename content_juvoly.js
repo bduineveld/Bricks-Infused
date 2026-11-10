@@ -1,5 +1,5 @@
 /////////////////////////////// JUVOLY PAGE (tandem / app) //////////////////////////////////////////
- // Content script op *.juvoly.nl. Status + acties voor Bricks Infused.
+ // Content script op app.tandemhealth.ai (Juvoly heet nu Tandem). Status + acties voor Bricks Infused.
  // Fasen: login → ready (Consult starten) → recording → paused → notes (SOEP).
 
 const JUVOLY_SOURCE = 'bricks-infused-juvoly';
@@ -205,12 +205,12 @@ function juvoly_listNotes() {
     name: juvoly_clean(t.innerText),
     selected: t.getAttribute('aria-selected') === 'true'
   }));
-  return { ok: notes.length > 0, notes, error: notes.length ? undefined : 'Geen verslagen gevonden in Juvoly.' };
+  return { ok: notes.length > 0, notes, error: notes.length ? undefined : 'Geen verslagen gevonden in Tandem.' };
 }
 
 async function juvoly_selectNote(index) {
   const tab = juvoly_noteTabs()[index];
-  if (!tab) return { ok: false, error: `Verslag ${index + 1} niet gevonden in Juvoly.`, status: juvoly_status() };
+  if (!tab) return { ok: false, error: `Verslag ${index + 1} niet gevonden in Tandem.`, status: juvoly_status() };
   if (tab.getAttribute('aria-selected') !== 'true') {
     juvoly_click(tab);
     await juvoly_waitFor(() => {
@@ -237,7 +237,7 @@ function juvoly_splitInputs(dialog) {
 
 function juvoly_splitInfo() {
   const dialog = juvoly_splitDialog();
-  if (!dialog) return { ok: false, error: 'Geen opsplits-vraag open in Juvoly.' };
+  if (!dialog) return { ok: false, error: 'Geen opsplits-vraag open in Tandem.' };
   const items = juvoly_splitInputs(dialog).map((input) => ({
     label: juvoly_clean(input.parentElement.querySelector('label').textContent),
     value: input.value || ''
@@ -262,7 +262,7 @@ function juvoly_splitDeleteButton(input) {
 
 async function juvoly_splitApply(values, mode, removed) {
   const dialog = juvoly_splitDialog();
-  if (!dialog) return { ok: false, error: 'Geen opsplits-vraag open in Juvoly.', status: juvoly_status() };
+  if (!dialog) return { ok: false, error: 'Geen opsplits-vraag open in Tandem.', status: juvoly_status() };
   if (mode === 'confirm') {
     // Hoogste index eerst, zodat lagere indexen blijven kloppen
     const toRemove = [...new Set(removed || [])].filter((i) => Number.isInteger(i)).sort((a, b) => b - a);
@@ -271,7 +271,7 @@ async function juvoly_splitApply(values, mode, removed) {
       if (before.length <= 2 || !before[idx]) break;
       const del = juvoly_splitDeleteButton(before[idx]);
       if (!juvoly_click(del)) {
-        return { ok: false, error: 'Onderwerp verwijderen in Juvoly mislukt.', status: juvoly_status() };
+        return { ok: false, error: 'Onderwerp verwijderen in Tandem mislukt.', status: juvoly_status() };
       }
       await juvoly_waitFor(() => juvoly_splitInputs(dialog).length < before.length, 3000, 100);
     }
@@ -362,7 +362,7 @@ async function juvoly_ensureReady() {
   if (st.phase === 'login') {
     return {
       ok: false,
-      error: 'Niet ingelogd in Juvoly. Log in in het Juvoly-tabblad en probeer opnieuw.',
+      error: 'Niet ingelogd in Tandem. Log in in het Tandem-tabblad en probeer opnieuw.',
       status: st
     };
   }
@@ -378,7 +378,7 @@ async function juvoly_ensureReady() {
   if (again.phase === 'login') {
     return {
       ok: false,
-      error: 'Niet ingelogd in Juvoly. Log in in het Juvoly-tabblad.',
+      error: 'Niet ingelogd in Tandem. Log in in het Tandem-tabblad.',
       status: again
     };
   }
@@ -387,7 +387,7 @@ async function juvoly_ensureReady() {
   }
   return {
     ok: false,
-    error: 'Juvoly is geopend, maar nog niet klaar om op te nemen. Ga naar de startpagina (Consult starten).',
+    error: 'Tandem is geopend, maar nog niet klaar om op te nemen. Ga naar de startpagina (Consult starten).',
     status: again
   };
 }
@@ -396,7 +396,7 @@ async function juvoly_ensureReady() {
 async function juvoly_startRecording() {
   let st = juvoly_status();
   if (st.phase === 'login') {
-    return { ok: false, error: 'Niet ingelogd in Juvoly.', status: st };
+    return { ok: false, error: 'Niet ingelogd in Tandem.', status: st };
   }
   if (st.phase === 'recording') {
     return { ok: true, action: 'already-recording', status: st };
@@ -427,7 +427,7 @@ async function juvoly_startRecording() {
   if (!start) {
     return {
       ok: false,
-      error: 'Geen “Consult starten” of “Nieuw consult” gevonden. Open de Juvoly-startpagina.',
+      error: 'Geen “Consult starten” of “Nieuw consult” gevonden. Open de Tandem-startpagina.',
       status: juvoly_status()
     };
   }
@@ -439,7 +439,7 @@ async function juvoly_startRecording() {
   }
   return {
     ok: false,
-    error: 'Consult starten lukte niet (of microfoon-toestemming nodig in Juvoly-tab).',
+    error: 'Consult starten lukte niet (of microfoon-toestemming nodig in Tandem-tab).',
     status: st
   };
 }
@@ -455,7 +455,7 @@ function juvoly_pause() {
 
 async function juvoly_resume() {
   if (!juvoly_click(juvoly_resumeButton())) {
-    return { ok: false, error: 'Geen hervat-knop gevonden in Juvoly. Klik in het Juvoly-tabblad op hervatten.', status: juvoly_status() };
+    return { ok: false, error: 'Geen hervat-knop gevonden in Tandem. Klik in het Tandem-tabblad op hervatten.', status: juvoly_status() };
   }
   await juvoly_waitFor(() => juvoly_phase() === 'recording', 8000);
   return { ok: true, action: 'resume', status: juvoly_status() };
@@ -475,7 +475,7 @@ async function juvoly_summaryResult(action) {
       splitPending: true,
       soep,
       status: juvoly_status(),
-      error: 'Juvoly vraagt of het verslag opgesplitst moet worden.'
+      error: 'Tandem vraagt of het verslag opgesplitst moet worden.'
     };
   }
   const ready = juvoly_isNotesReady();
@@ -487,7 +487,7 @@ async function juvoly_summaryResult(action) {
     summaryFailed: failed,
     status: juvoly_status(),
     error: ready ? undefined : failed
-      ? 'Verslag kon niet worden gegenereerd (consult te kort?). Zie het Juvoly-tabblad.'
+      ? 'Verslag kon niet worden gegenereerd (consult te kort?). Zie het Tandem-tabblad.'
       : 'Samenvatting niet klaar binnen de wachttijd.'
   };
 }
@@ -521,7 +521,7 @@ async function juvoly_getSoep() {
     return { ok: true, soep: juvoly_readSoepFromDom(), url: location.href, status: juvoly_status() };
   }
   if (juvoly_isNotesPage()) {
-    return { ok: false, error: 'Juvoly is de samenvatting nog aan het schrijven.', soep: { S: '', O: '', E: '', P: '' }, status: juvoly_status() };
+    return { ok: false, error: 'Tandem is de samenvatting nog aan het schrijven.', soep: { S: '', O: '', E: '', P: '' }, status: juvoly_status() };
   }
   // Niet automatisch samenvatten bij get — Bricks triggert summarize apart
   return {

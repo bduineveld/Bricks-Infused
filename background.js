@@ -87,7 +87,7 @@ const ZORGDOMEIN_INSTALL_URL = IS_FIREFOX
   : "https://microsoftedge.microsoft.com/addons/detail/zorgdomein-infused/mehfpjeblkfbobhimioegkflielbcemk";
 
 // Juvoly draait in een aparte tab (geen iframe — Permissions-Policy blokkeert mic in Bricks).
-const JUVOLY_HOME_URL = "https://tandem.juvoly.nl/";
+const JUVOLY_HOME_URL = "https://app.tandemhealth.ai/"; // Juvoly heet nu Tandem
 const JUVOLY_SOURCE = "bricks-infused-juvoly";
 
 let pendingResizerPercentages = {};
@@ -97,7 +97,7 @@ function isJuvolyUrl(url) {
   if (!url || typeof url !== "string") return false;
   try {
     const u = new URL(url);
-    return /(^|\.)juvoly\.nl$/i.test(u.hostname);
+    return /^app\.tandemhealth\.ai$/i.test(u.hostname);
   } catch (_) {
     return false;
   }
@@ -471,7 +471,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   created,
                   tabId: tab.id,
                   status: st,
-                  error: 'Log eerst in op Juvoly.'
+                  error: 'Log eerst in op Tandem.'
                 });
                 return;
               }
@@ -500,8 +500,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             status: last.ok ? last : { phase: 'loading', noTab: false },
             // Tab van vóór het (her)laden van de extensie heeft geen content script
             warning: !last.ok && /Receiving end does not exist/i.test(last.error || '')
-              ? 'Ververs het Juvoly-tabblad (F5), dan kan Bricks Infused het besturen.'
-              : 'Juvoly-tab is geopend, maar nog niet klaar. Log in of wacht tot de startpagina geladen is.'
+              ? 'Ververs het Tandem-tabblad (F5), dan kan Bricks Infused het besturen.'
+              : 'Tandem-tab is geopend, maar nog niet klaar. Log in of wacht tot de startpagina geladen is.'
           });
         } catch (err) {
           reply({ ok: false, error: String(err && err.message || err) });
@@ -531,7 +531,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           let tab = await findJuvolyTab();
           if (!tab) {
             if (message.type === 'juvoly.status') {
-              reply({ ok: false, noTab: true, error: 'Geen Juvoly-tab' });
+              reply({ ok: false, noTab: true, error: 'Geen Tandem-tab' });
               return;
             }
             if (message.type === 'juvoly.start' || message.type === 'juvoly.ensureReady') {
@@ -539,7 +539,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               tab = opened.tab;
               await waitMs(800);
             } else {
-              reply({ ok: false, error: 'Geen Juvoly-tab gevonden. Klik eerst op Juvoly.' });
+              reply({ ok: false, error: 'Geen Tandem-tab gevonden. Klik eerst op Tandem.' });
               return;
             }
           }

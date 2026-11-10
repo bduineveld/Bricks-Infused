@@ -138,7 +138,7 @@ function juvoly_showReviewModal(soep, opts = {}) {
     <div class="juvoly-modal-title" style="font-size:1.15em;font-weight:600;flex:1;color:#c05600;"></div>
     <button type="button" class="juvoly-modal-close" aria-label="Sluiten" style="background:transparent;border:none;font-size:22px;cursor:pointer;color:#718096;line-height:1;">&times;</button>
   `;
-  header.querySelector('.juvoly-modal-title').textContent = opts.title || 'Juvoly → SOEP';
+  header.querySelector('.juvoly-modal-title').textContent = opts.title || 'Tandem → SOEP';
   header.querySelector('.juvoly-modal-close').addEventListener('click', juvoly_closeModal);
   modal.appendChild(header);
 
@@ -238,7 +238,7 @@ function juvoly_showSplitModal(items, onChoice) {
   header.style.cssText = 'display:flex;align-items:center;gap:12px;padding:16px 20px 4px;';
   const title = document.createElement('div');
   title.style.cssText = 'font-size:1.15em;font-weight:600;flex:1;color:#c05600;';
-  title.textContent = 'Juvoly: verslag opsplitsen';
+  title.textContent = 'Tandem: verslag opsplitsen';
   const close = document.createElement('button');
   close.type = 'button';
   close.setAttribute('aria-label', 'Sluiten');
@@ -250,7 +250,7 @@ function juvoly_showSplitModal(items, onChoice) {
 
   const hint = document.createElement('div');
   hint.style.cssText = 'padding:0 20px 12px;font-size:12px;color:#718096;';
-  hint.textContent = 'Juvoly hoorde meerdere onderwerpen. Pas de namen aan en bevestig, of maak één verslag.';
+  hint.textContent = 'Tandem hoorde meerdere onderwerpen. Pas de namen aan en bevestig, of maak één verslag.';
   modal.appendChild(hint);
 
   const body = document.createElement('div');
@@ -324,7 +324,7 @@ function juvoly_showSplitModal(items, onChoice) {
 async function juvoly_openSplitChoice() {
   const info = await juvoly_send('juvoly.splitInfo');
   if (!info.ok || !info.items || !info.items.length) {
-    juvoly_toast(info.error || 'Opsplits-vraag niet gevonden in Juvoly.', 'warn');
+    juvoly_toast(info.error || 'Opsplits-vraag niet gevonden in Tandem.', 'warn');
     return;
   }
   juvoly_showSplitModal(info.items, async (mode, values, removed) => {
@@ -334,7 +334,7 @@ async function juvoly_openSplitChoice() {
     try {
       const applied = await juvoly_send('juvoly.splitApply', { mode, values, removed: removed || [] });
       if (!applied.ok) {
-        juvoly_toast(applied.error || 'Keuze doorgeven aan Juvoly mislukt.', 'error');
+        juvoly_toast(applied.error || 'Keuze doorgeven aan Tandem mislukt.', 'error');
         return;
       }
       // Juvoly genereert nu het verslag; wachten tot het klaar is
@@ -371,8 +371,9 @@ function juvoly_ensureSpinnerStyle() {
 function juvoly_btnStyle(kind) {
   const base = 'display:inline-flex;align-items:center;justify-content:center;height:28px;width:28px;padding:0;border-radius:6px;font-size:13px;font-weight:700;border:1px solid transparent;cursor:pointer;margin-left:4px;line-height:1;flex-shrink:0;';
   const styles = {
-    juvoly: 'display:inline-flex;align-items:center;justify-content:center;height:28px;padding:0 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.02em;border:1px solid #c05600;cursor:pointer;white-space:nowrap;margin-left:6px;background:#dd6b20;color:#fff;',
-    juvolyReady: 'display:inline-flex;align-items:center;justify-content:center;height:28px;padding:0 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.02em;border:1px solid #9c4221;cursor:pointer;white-space:nowrap;margin-left:6px;background:#c05600;color:#fff;',
+    // Tandem-knop (voorheen Juvoly): beeldmerk op Tandems pastelverloop; verbonden = dikkere rand.
+    juvoly: 'display:inline-flex;align-items:center;justify-content:center;height:28px;width:34px;padding:0;border-radius:6px;border:1px solid #b7d7c4;cursor:pointer;margin-left:6px;flex-shrink:0;background:linear-gradient(135deg,#e2f8cf,#fbfaf2 55%,#c9ecf6);color:#000;',
+    juvolyReady: 'display:inline-flex;align-items:center;justify-content:center;height:28px;width:34px;padding:0;border-radius:6px;border:2px solid #2f855a;cursor:pointer;margin-left:6px;flex-shrink:0;background:linear-gradient(135deg,#c9f2ad,#eef8ea 55%,#a9def0);color:#000;',
     record: base + 'background:#e53e3e;color:#fff;border-color:#c53030;',
     pause: base + 'background:#744210;color:#fefcbf;border-color:#975a16;',
     summarize: base + 'background:#2b6cb0;color:#fff;border-color:#2c5282;',
@@ -380,6 +381,26 @@ function juvoly_btnStyle(kind) {
     muted: base + 'background:#edf2f7;color:#a0aec0;border-color:#e2e8f0;cursor:default;'
   };
   return styles[kind] || styles.muted;
+}
+
+// Beeldmerk van Tandem (van tandemhealth.ai), kleurt mee met currentColor.
+function juvoly_tandemIcon() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 35.2 20.6');
+  svg.setAttribute('width', '22');
+  svg.setAttribute('height', '13');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.style.cssText = 'display:block;fill:currentColor;pointer-events:none;';
+  [
+    'M 18.328 4.83 L 14.249 18.667 C 12.883 19.349 11.378 19.702 9.851 19.7 C 4.41 19.7 0 15.29 0 9.851 C 0 4.411 4.41 0 9.851 0 C 13.458 0 16.612 1.938 18.328 4.829 Z',
+    'M 35.115 10.536 C 35.115 16.061 30.603 20.556 25.059 20.556 C 23.285 20.558 21.543 20.091 20.007 19.203 C 18.523 18.342 17.283 17.117 16.404 15.644 L 16.358 15.568 L 17.259 12.525 L 17.466 13.12 C 18.578 16.293 21.575 18.416 24.937 18.414 C 26.904 18.416 28.801 17.685 30.258 16.363 C 32.112 14.688 33.057 12.23 32.804 9.744 C 32.609 7.808 31.702 6.013 30.258 4.709 C 28.802 3.386 26.905 2.655 24.938 2.657 C 23.172 2.65 21.455 3.239 20.066 4.33 L 19.567 4.719 L 20.489 1.606 L 20.568 1.567 C 21.962 0.87 23.5 0.51 25.058 0.515 C 30.603 0.515 35.115 5.01 35.115 10.536 Z'
+  ].forEach((d) => {
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', d);
+    svg.appendChild(path);
+  });
+  return svg;
 }
 
 function juvoly_icon(name) {
@@ -421,10 +442,11 @@ function juvoly_paintToolbar() {
   try {
     openBtn.disabled = !!juvolyBusy;
     openBtn.style.cssText = juvoly_btnStyle(showControls ? 'juvolyReady' : 'juvoly');
-    openBtn.textContent = 'Juvoly';
+    if (!openBtn.querySelector('svg')) openBtn.replaceChildren(juvoly_tandemIcon());
+    openBtn.setAttribute('aria-label', 'Tandem');
     openBtn.title = showControls
-      ? 'Naar Juvoly-tab'
-      : 'Juvoly openen in nieuw tabblad';
+      ? 'Naar Tandem-tab'
+      : 'Tandem openen in nieuw tabblad';
 
     controls.style.display = showControls ? 'inline-flex' : 'none';
 
@@ -458,12 +480,12 @@ function juvoly_paintToolbar() {
       sumBtn.disabled = !!juvolyBusy;
       sumBtn.style.cssText = juvoly_btnStyle('summarize');
       sumBtn.textContent = '?';
-      sumBtn.title = 'Juvoly vraagt of het verslag opgesplitst moet worden — klik om te kiezen';
+      sumBtn.title = 'Tandem vraagt of het verslag opgesplitst moet worden — klik om te kiezen';
     } else if (!summarizing && st && st.summaryFailed) {
       sumBtn.disabled = !!juvolyBusy;
       sumBtn.style.cssText = juvoly_btnStyle('summarize');
       sumBtn.textContent = '✕';
-      sumBtn.title = 'Verslag kon niet worden gegenereerd — klik om naar Juvoly te gaan';
+      sumBtn.title = 'Verslag kon niet worden gegenereerd — klik om naar Tandem te gaan';
     } else if (summarizing) {
       juvoly_ensureSpinnerStyle();
       sumBtn.disabled = true;
@@ -474,7 +496,7 @@ function juvoly_paintToolbar() {
         spin.className = 'bij-spinner';
         sumBtn.appendChild(spin);
       }
-      sumBtn.title = 'Juvoly maakt de samenvatting…';
+      sumBtn.title = 'Tandem maakt de samenvatting…';
     } else {
       sumBtn.disabled = !!juvolyBusy || !canSum;
       sumBtn.style.cssText = juvoly_btnStyle(sumBtn.disabled ? 'muted' : 'summarize');
@@ -534,7 +556,7 @@ async function juvoly_onOpen() {
     if (juvolyControlsUnlocked && juvoly_isUsablePhase(juvolyLastStatus && juvolyLastStatus.phase)) {
       const resp = await juvoly_send('juvoly.openOrFocus', { ensureReady: false });
       if (!resp.ok) {
-        juvoly_toast(resp.error || 'Kon Juvoly-tab niet openen.', 'error');
+        juvoly_toast(resp.error || 'Kon Tandem-tab niet openen.', 'error');
       }
       if (resp.status) juvolyLastStatus = resp.status;
       return;
@@ -548,14 +570,14 @@ async function juvoly_onOpen() {
 
     if (resp.needsLogin || phase === 'login') {
       juvolyControlsUnlocked = false;
-      juvoly_toast('Log eerst in op Juvoly.', 'warn');
+      juvoly_toast('Log eerst in op Tandem.', 'warn');
       juvoly_stopPolling();
       return;
     }
 
     if (!resp.ok) {
       juvolyControlsUnlocked = false;
-      juvoly_toast(resp.error || 'Juvoly openen mislukt.', 'error');
+      juvoly_toast(resp.error || 'Tandem openen mislukt.', 'error');
       return;
     }
 
@@ -563,14 +585,14 @@ async function juvoly_onOpen() {
       juvolyControlsUnlocked = true;
       juvoly_startPolling();
       juvoly_toast(resp.created
-        ? 'Juvoly geopend — controls zijn beschikbaar.'
-        : 'Juvoly verbonden — controls zijn beschikbaar.', 'ok');
+        ? 'Tandem geopend — controls zijn beschikbaar.'
+        : 'Tandem verbonden — controls zijn beschikbaar.', 'ok');
     } else {
       juvolyControlsUnlocked = false;
-      juvoly_toast(resp.warning || 'Juvoly is geopend, maar nog niet klaar. Ga naar de startpagina of log in.', 'warn');
+      juvoly_toast(resp.warning || 'Tandem is geopend, maar nog niet klaar. Ga naar de startpagina of log in.', 'warn');
     }
   } catch (err) {
-    juvoly_toast('Juvoly openen mislukt: ' + (err && err.message || err), 'error');
+    juvoly_toast('Tandem openen mislukt: ' + (err && err.message || err), 'error');
   } finally {
     juvolyBusy = false;
     juvoly_paintToolbar();
@@ -600,7 +622,7 @@ async function juvoly_onRecord() {
     } else {
       const resp = await juvoly_send('juvoly.start');
       if (!resp.ok) juvoly_toast(resp.error || 'Opname starten mislukt.', 'error');
-      else juvoly_toast('Opname gestart in Juvoly.', 'ok');
+      else juvoly_toast('Opname gestart in Tandem.', 'ok');
       juvolyLastStatus = resp.status || juvolyLastStatus;
     }
   } finally {
@@ -618,7 +640,7 @@ async function juvoly_onSummarize() {
   if (juvolyLastStatus && juvolyLastStatus.summaryFailed) {
     // Mislukte samenvatting: gebruiker kiest in Juvoly zelf (hervatten, context, leeg aanmaken)
     const resp = await juvoly_send('juvoly.openOrFocus', { ensureReady: false });
-    if (!resp.ok) juvoly_toast(resp.error || 'Kon Juvoly-tab niet openen.', 'error');
+    if (!resp.ok) juvoly_toast(resp.error || 'Kon Tandem-tab niet openen.', 'error');
     return;
   }
   juvolyBusy = true;
@@ -784,7 +806,7 @@ async function juvoly_importMany(notes) {
   const start = juvoly_selectedContact();
   const room = JUVOLY_MAX_CONTACTS - start + 1;
   if (notes.length > room) {
-    juvoly_toast(`Juvoly heeft ${notes.length} verslagen, maar vanaf contact ${start} zijn er nog maar ${room} Bricks-contacten. De rest moet u handmatig overnemen.`, 'warn');
+    juvoly_toast(`Tandem heeft ${notes.length} verslagen, maar vanaf contact ${start} zijn er nog maar ${room} Bricks-contacten. De rest moet u handmatig overnemen.`, 'warn');
   }
   const count = Math.min(notes.length, room);
   for (let i = 0; i < count; i++) {
@@ -804,7 +826,7 @@ async function juvoly_importMany(notes) {
       return;
     }
     const result = await juvoly_reviewOnce(resp.soep || { S: '', O: '', E: '', P: '' }, {
-      title: `Juvoly ${i + 1}/${count}: ${notes[i].name} → contact ${contact}`,
+      title: `Tandem ${i + 1}/${count}: ${notes[i].name} → contact ${contact}`,
       applyLabel: i < count - 1 ? 'Overnemen, daarna ICPC kiezen' : 'Overnemen in SOEP'
     });
     if (!result) return; // geannuleerd
@@ -870,10 +892,13 @@ function juvoly_addToolbarControls() {
       return b;
     };
 
-    bar.appendChild(mk('open', 'Juvoly', juvoly_onOpen, {
+    const openBtn = mk('open', '', juvoly_onOpen, {
       kind: 'juvoly',
-      title: 'Juvoly openen in nieuw tabblad'
-    }));
+      title: 'Tandem openen in nieuw tabblad'
+    });
+    openBtn.appendChild(juvoly_tandemIcon());
+    openBtn.setAttribute('aria-label', 'Tandem');
+    bar.appendChild(openBtn);
 
     const controls = document.createElement('div');
     controls.setAttribute(JUVOLY_ATTR, 'controls');
@@ -941,7 +966,7 @@ function juvoly_mutationIsOurs(mutations) {
 
 loadGlobalOptions(function (options) {
   if (!options.juvolyKnop) {
-    console.log('Juvoly knop disabled');
+    console.log('Tandem knop disabled');
     return;
   }
   const observer = new MutationObserver((mutations) => {
