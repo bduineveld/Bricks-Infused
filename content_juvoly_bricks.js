@@ -445,8 +445,8 @@ function juvoly_paintToolbar() {
     if (!openBtn.querySelector('svg')) openBtn.replaceChildren(juvoly_tandemIcon());
     openBtn.setAttribute('aria-label', 'Tandem');
     openBtn.title = showControls
-      ? 'Naar Tandem-tab'
-      : 'Tandem openen in nieuw tabblad';
+      ? 'Naar Juvoly (Tandem)-tab'
+      : 'Juvoly (Tandem) openen in nieuw tabblad';
 
     controls.style.display = showControls ? 'inline-flex' : 'none';
 
@@ -894,7 +894,7 @@ function juvoly_addToolbarControls() {
 
     const openBtn = mk('open', '', juvoly_onOpen, {
       kind: 'juvoly',
-      title: 'Tandem openen in nieuw tabblad'
+      title: 'Juvoly (Tandem) openen in nieuw tabblad'
     });
     openBtn.appendChild(juvoly_tandemIcon());
     openBtn.setAttribute('aria-label', 'Tandem');

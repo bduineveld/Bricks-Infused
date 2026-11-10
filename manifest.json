@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Bricks Infused",
   "description": "Voegt nieuwe functionaliteiten toe aan Bricks Huisarts.",
-  "version": "2.8.1",
-  "version_name": "v2.8.1 10-11-2026",
+  "version": "2.8.2",
+  "version_name": "v2.8.2 10-11-2026",
   "author": "Dokter Bart",
   "homepage_url": "https://dokterbart.nl/",
   "icons": {
@@ -50,13 +50,6 @@
         "content_postverwerking.js"
       ],
       "run_at": "document_end"
-    },
-    {
-      "matches": [
-        "https://app.tandemhealth.ai/*"
-      ],
-      "js": ["content_juvoly.js"],
-      "run_at": "document_idle"
     }
   ],
   "permissions": [
@@ -64,15 +57,16 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://brickshuisarts.nl/*",
+    "https://brickshuisarts.nl/*"
+  ],
+  "optional_host_permissions": [
     "https://app.tandemhealth.ai/*"
   ],
   "web_accessible_resources": [
     {
       "resources": ["bricks-infused.svg", "bricks.svg"],
       "matches": [
-        "https://brickshuisarts.nl/*",
-        "https://app.tandemhealth.ai/*"
+        "https://brickshuisarts.nl/*"
       ]
     }
   ]

@@ -512,14 +512,15 @@ document.addEventListener('DOMContentLoaded', () => {
   function applyFocusHighlight(focusTarget) {
     const focusMap = {
       communicatie: { itemId: 'comm-settings-item', sectionId: 'comm-knoppen-section' },
-      zorgdomein: { itemId: 'zorgdomein-settings-item', sectionId: 'zorgdomein-section' }
+      zorgdomein: { itemId: 'zorgdomein-settings-item', sectionId: 'zorgdomein-section' },
+      juvoly: { itemId: 'juvoly-settings-item' }
     };
     const conf = focusMap[focusTarget];
     if (!conf) return;
     const item = document.getElementById(conf.itemId);
     if (!item) return;
 
-    expandSectionByTarget(conf.sectionId);
+    if (conf.sectionId) expandSectionByTarget(conf.sectionId);
     item.classList.add('focus-highlight');
     item.scrollIntoView({ behavior: 'smooth', block: 'center' });
     setTimeout(() => item.classList.remove('focus-highlight'), 3000);
@@ -720,6 +721,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('opt-resizer').checked = data.journaalResizer !== false;
     document.getElementById('opt-declareren').checked = data.declarerenNietOpGebeurd !== false;
     document.getElementById('opt-juvoly').checked = !!data.juvolyKnop;
+    werkTandemToestemmingBij();
     document.getElementById('opt-uprevent').checked = !!data.uprevent;
     document.getElementById('opt-medicijn').checked = data.medicijnMarkeringen !== false;
     document.getElementById('opt-pdf-export').checked = data.pdfExport !== false;
@@ -747,6 +749,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     setupListDragContainer('btnlabels-list', 'btnlabel-row');
   });
+
+  // Tandem (Juvoly): toestemming voor app.tandemhealth.ai is optioneel en wordt pas gevraagd als
+  // iemand de koppeling aanzet. Vragen moet direct vanuit een klik.
+  const TANDEM_ORIGINS = ['https://app.tandemhealth.ai/*'];
+  const juvolyCb = document.getElementById('opt-juvoly');
+  const werkTandemToestemmingBij = () => {
+    chrome.permissions.contains({ origins: TANDEM_ORIGINS }, (heeft) => {
+      document.getElementById('juvoly-toestemming').hidden = !juvolyCb.checked || !!heeft;
+    });
+  };
+  const vraagTandemToestemming = () => {
+    chrome.permissions.request({ origins: TANDEM_ORIGINS }, () => werkTandemToestemmingBij());
+  };
+  juvolyCb.addEventListener('change', () => {
+    if (juvolyCb.checked) vraagTandemToestemming();
+    else werkTandemToestemmingBij();
+  });
+  document.getElementById('juvoly-toestemming-knop').addEventListener('click', vraagTandemToestemming);
 
   document.getElementById('optionsForm').addEventListener('submit', (e) => {
     e.preventDefault();

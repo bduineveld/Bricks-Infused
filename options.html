@@ -996,10 +996,11 @@
               <input type="checkbox" id="opt-declareren">
               <label for="opt-declareren">Consult afhandelen: alleen expliciet op gebeurd<span class="desc">Bij het afhandelen van een consult wordt niets vanzelf op "gebeurd" gezet.</span></label>
             </div>
-            <div class="checkbox-item">
+            <div class="checkbox-item" id="juvoly-settings-item">
               <span class="opt-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></span>
               <input type="checkbox" id="opt-juvoly">
-              <label for="opt-juvoly">Tandem-integratie (voorheen Juvoly)<span class="desc">Tandem-knop in de SOEP-balk; daarna knoppen voor opnemen, samenvatten en overnemen.</span></label>
+              <label for="opt-juvoly">Juvoly-integratie (nu Tandem)<span class="desc">Juvoly/Tandem-knop in de SOEP-balk; daarna knoppen voor opnemen, samenvatten en overnemen.</span><span class="desc" id="juvoly-toestemming" hidden style="color:#c05621;">Bricks Infused heeft nog geen toestemming voor Tandem (app.tandemhealth.ai).
+                  <button type="button" id="juvoly-toestemming-knop" style="margin-left:4px;">Toestemming geven</button></span></label>
             </div>
             <div class="groep-kop">Post &amp; communicatie</div>
             <div class="checkbox-item">

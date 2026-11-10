@@ -225,8 +225,57 @@ async function herinjecteerContentScripts() {
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'update' || details.reason === 'install') {
     herinjecteerContentScripts();
+    tandemScriptBijwerken(true);
   }
 });
+
+// =============================================================================
+// Tandem (voorheen Juvoly): optionele toestemming.
+// -----------------------------------------------------------------------------
+// app.tandemhealth.ai staat onder optional_host_permissions: een update zet de extensie dan niet uit
+// tot iedereen toestemming geeft. Wie de Juvoly-koppeling aanzet (opties), geeft toestemming; pas dan
+// registreren we het content script voor Tandem. Intrekken = script weer weg.
+// =============================================================================
+const TANDEM_ORIGINS = ['https://app.tandemhealth.ai/*'];
+const TANDEM_SCRIPT_ID = 'tandem';
+
+function tandemHeeftToestemming() {
+  return chrome.permissions.contains({ origins: TANDEM_ORIGINS }).catch(() => false);
+}
+
+// injecteer: ook in al open Tandem-tabbladen zetten (na toestemming of update, zonder verversen).
+async function tandemScriptBijwerken(injecteer) {
+  try {
+    const mag = await tandemHeeftToestemming();
+    const bestaand = await chrome.scripting.getRegisteredContentScripts({ ids: [TANDEM_SCRIPT_ID] });
+    if (!mag) {
+      if (bestaand.length) await chrome.scripting.unregisterContentScripts({ ids: [TANDEM_SCRIPT_ID] });
+      return;
+    }
+    if (!bestaand.length) {
+      await chrome.scripting.registerContentScripts([{
+        id: TANDEM_SCRIPT_ID,
+        matches: TANDEM_ORIGINS,
+        js: ['content_juvoly.js'],
+        runAt: 'document_idle'
+      }]);
+      injecteer = true;
+    }
+    if (!injecteer) return;
+    const tabs = await chrome.tabs.query({ url: TANDEM_ORIGINS });
+    for (const tab of tabs) {
+      if (!tab.id || tab.discarded) continue;
+      chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content_juvoly.js'] })
+        .catch((e) => console.warn('Tandem-script injecteren mislukt', tab.id, e && e.message));
+    }
+  } catch (e) {
+    console.warn('Tandem-script bijwerken mislukt', e && e.message);
+  }
+}
+
+chrome.permissions.onAdded.addListener(() => tandemScriptBijwerken(false));
+chrome.permissions.onRemoved.addListener(() => tandemScriptBijwerken(false));
+tandemScriptBijwerken(false); // bij elke start (Firefox bewaart geregistreerde scripts niet altijd)
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message && message.type === 'getDefaults') {
@@ -456,6 +505,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'juvoly.openOrFocus') {
       (async () => {
         try {
+          if (!(await tandemHeeftToestemming())) {
+            // Toestemming vragen kan alleen vanuit een klik op een extensiepagina: de opties.
+            await chrome.storage.local.set({ optionsFocusTarget: 'juvoly' });
+            chrome.runtime.openOptionsPage();
+            reply({
+              ok: false,
+              needsPermission: true,
+              error: 'Geef eerst toestemming voor Tandem (Juvoly) in de instellingen die nu openen.'
+            });
+            return;
+          }
           const { tab, created } = await ensureJuvolyTab({
             stayInBackground: !!message.stayInBackground
           });
