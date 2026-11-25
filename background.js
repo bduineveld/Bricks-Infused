@@ -103,6 +103,44 @@ function isJuvolyUrl(url) {
   }
 }
 
+/**
+ * Tandem "in slaap": Chrome bevriest achtergrondtabbladen (Energiebesparing) of haalt ze uit het
+ * geheugen (Geheugenbesparing). Een bevroren tab voert een opdracht pas uit zodra je hem weer
+ * opent; dan begint de opname pas op dat moment. Daarom vóór elke actie:
+ *  - de tab nooit automatisch laten weggooien (autoDiscardable: false);
+ *  - weggegooid → opnieuw laden en wachten tot hij klaar is;
+ *  - bevroren → heel even naar voren halen (dat ontdooit hem) en terug naar Bricks.
+ */
+async function tandemWekken(tab, terugTab) {
+  try {
+    tab = await chrome.tabs.get(tab.id);
+  } catch (_) {
+    return tab;
+  }
+  if (tab.autoDiscardable !== false) {
+    try { await chrome.tabs.update(tab.id, { autoDiscardable: false }); } catch (_) { /* oudere Chrome/Firefox */ }
+  }
+  const wacht = (ms) => new Promise((r) => setTimeout(r, ms));
+  if (tab.discarded) {
+    await chrome.tabs.reload(tab.id);
+    for (let i = 0; i < 30; i++) {
+      await wacht(400);
+      try {
+        const t = await chrome.tabs.get(tab.id);
+        if (t.status === 'complete' && !t.discarded) { tab = t; break; }
+      } catch (_) { break; }
+    }
+    await wacht(800);
+  } else if (tab.frozen && !tab.active) {
+    try {
+      await chrome.tabs.update(tab.id, { active: true });
+      await wacht(700);
+      if (terugTab && terugTab.id != null) await chrome.tabs.update(terugTab.id, { active: true });
+    } catch (_) { /* tab weg */ }
+  }
+  return tab;
+}
+
 async function findJuvolyTab() {
   const tabs = await chrome.tabs.query({});
   const juvolyTabs = tabs.filter((t) => isJuvolyUrl(t.url));
@@ -471,6 +509,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         tab = await chrome.tabs.create(createOpts);
         created = true;
+        try { await chrome.tabs.update(tab.id, { autoDiscardable: false }); } catch (_) { /* ignore */ }
         // Wacht tot tab klaar is (max ~8s), niet blind 1.2s
         for (let i = 0; i < 16; i++) {
           try {
@@ -603,12 +642,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               return;
             }
           }
+          if (message.type !== 'juvoly.status') tab = await tandemWekken(tab, sender && sender.tab);
           // splitApply niet herhalen: een tweede klik zou in het volgende scherm landen
           const resp = message.type === 'juvoly.splitApply'
             ? await callJuvoly(tab.id, message.type, 0, { values: message.values, mode: message.mode, removed: message.removed })
             : message.type === 'juvoly.selectNote'
               ? await callJuvoly(tab.id, message.type, 2, { index: message.index })
-              : await callJuvoly(tab.id, message.type);
+              : message.type === 'juvoly.getSoep' && Number.isInteger(message.section)
+                ? await callJuvoly(tab.id, message.type, 2, { section: message.section })
+                : await callJuvoly(tab.id, message.type);
           reply(resp);
         } catch (err) {
           reply({ ok: false, error: String(err && err.message || err) });

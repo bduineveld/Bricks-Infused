@@ -5,6 +5,18 @@
 - [x] Instellingenpagina overzichtelijker maken, bijvoorbeeld met icoontjes per onderdeel
       (de lijst met opties en uitklapsecties wordt lang, zeker sinds Postverwerking).
 
+## Wensen
+- [ ] Live testen: groep Indifferente middelen (tube-icoon) — vaseline, cetomacrogol, lanette, zinkoxide, ureum
+- [ ] Live testen: ketenzorg-badge (HA/Spec, Keten+/-) bij bloeddruk- en diabetesmedicatie in autorisatie — vorm van keuze-uitslagen (WaardeDisplay/Waarde) uit GetUitslagenByWCIACodes nog niet gezien
+
+- [ ] Gedrag van Enter aanpassen.
+- [ ] Tandem 'in slaap' (opname start pas bij openen tab) live testen: tab niet meer weggooien, bevroren tab even wekken, Web Lock.
+- [ ] Autorisatie: patiëntbalk rood bij "UITGESCHREVEN" live testen.
+- [ ] Nieuwe medicatiegroepen live testen: Neusmedicatie (neus-icoon, o.a. budesonide-/fluticasonneusspray, xylometazoline)
+      en Jichtmedicatie (gewricht-icoon, allopurinol, colchicine, febuxostat; met eGFR).
+- [ ] Tandem met meerdere problemen live testen: de groene pijl toont een keuzelijst (één probleem naar het huidige
+      contact, of alles achter elkaar); werkt zowel bij opgesplitste tabbladen als bij meerdere problemen op één pagina.
+
 ## Postverwerking — nog te testen
 
 - [x] "+ ICPC"-knop: opent en vult Bricks' eigen venster "Episode toevoegen" (getest 11-10-2026 met R83.03 COVID-19).

@@ -69,7 +69,11 @@ const MEDICIJN_STANDAARD_GROEPEN = [
             'piroxicam', 'indometacine', 'ketoprofen', 'dexketoprofen', 'nabumeton', 'ketorolac', 'arthrotec']
     },
     {
-        id: 'antidiabetica', stijl: 'strook', icoon: 'diabetes', kleurStrook: '#16a34a', naam: 'Antidiabetica', kleur: '#dcfce7', aan: true, lab: ['hba1c', 'egfr'],
+        id: 'jicht', stijl: 'strook', icoon: 'joints', kleurStrook: '#9a3412', naam: 'Jichtmedicatie', kleur: '#ffedd5', aan: true, lab: ['egfr'],
+        woorden: ['allopurinol', 'febuxostat', 'colchicine', 'benzbromaron', 'probenecid', 'zyloric', 'adenuric']
+    },
+    {
+        id: 'antidiabetica', stijl: 'strook', icoon: 'diabetes', kleurStrook: '#16a34a', naam: 'Antidiabetica', kleur: '#dcfce7', aan: true, lab: ['hba1c', 'egfr'], keten: 'dm',
         // GLP-1-agonisten (ook bij overgewicht zonder diabetes): waarden wel tonen, maar geen oranje als ze ontbreken.
         labRustig: ['liraglutide', 'semaglutide', 'dulaglutide', 'exenatide', 'tirzepatide', 'mounjaro', 'ozempic', 'wegovy',
             'rybelsus', 'victoza', 'saxenda', 'trulicity', 'byetta', 'bydureon'],
@@ -81,7 +85,7 @@ const MEDICIJN_STANDAARD_GROEPEN = [
             'abasaglar', 'novorapid', 'humalog', 'apidra', 'fiasp', 'humuline', 'insulatard', 'novomix']
     },
     {
-        id: 'bloeddruk', stijl: 'strook', icoon: 'blood-pressure', kleurStrook: '#2563eb', naam: 'Bloeddrukmedicatie', kleur: '#dbeafe', aan: true, lab: ['egfr'],
+        id: 'bloeddruk', stijl: 'strook', icoon: 'blood-pressure', kleurStrook: '#2563eb', naam: 'Bloeddrukmedicatie', kleur: '#dbeafe', aan: true, lab: ['egfr'], keten: 'cvrm',
         // Geen nierfunctie bij bètablokkers.
         labNiet: ['metoprolol', 'bisoprolol', 'atenolol', 'nebivolol', 'propranolol', 'carvedilol', 'labetalol', 'celiprolol'],
         woorden: [
@@ -131,15 +135,23 @@ const MEDICIJN_STANDAARD_GROEPEN = [
         ]
     },
     {
-        // Hooikoorts en eczeem. Corticosteroïden alleen als neusspray of als crème/zalf (dezelfde stoffen bestaan
-        // als inhalator, tablet of darmcapsule). 'stof+neus' = beide delen in de naam.
+        // Neussprays en -druppels (vóór Hooikoorts, zodat bv. budesonide-neusspray een neus krijgt).
+        // 'stof+neus' = beide delen in de naam; dezelfde stoffen bestaan als inhalator, tablet of crème.
+        id: 'neus', stijl: 'strook', icoon: 'nose', kleurStrook: '#b45309', naam: 'Neusmedicatie', kleur: '#fef3c7', aan: true,
+        woordenNiet: ['mupiroc', 'bactroban'], // mupirocine-neuszalf hoort bij de antibiotica
+        woorden: ['avamys', 'flixonase', 'nasonex', 'rhinocort', 'nasacort', 'beconase', 'dymista', 'otrivin', 'nasivin',
+            'xylometazoline', 'oxymetazoline', 'neusspray', 'neusdruppel', 'neuszalf', 'neusgel',
+            'flutic+neus', 'flutic+nasaal', 'mometas+neus', 'mometas+nasaal', 'budeson+neus', 'budeson+nasaal',
+            'beclomet+neus', 'beclomet+nasaal', 'triamcin+neus', 'triamcin+nasaal', 'azelast+neus', 'azelast+nasaal',
+            'ipratrop+neus', 'ipratrop+nasaal', 'cromogli+neus', 'cromogli+nasaal']
+    },
+    {
+        // Hooikoorts en eczeem. Corticosteroïden alleen als crème/zalf (dezelfde stoffen bestaan als inhalator,
+        // tablet of darmcapsule); neussprays staan bij de neusmedicatie. 'stof+zalf' = beide delen in de naam.
         id: 'hooikoorts', stijl: 'strook', icoon: 'allergies', kleurStrook: '#ca8a04', naam: 'Hooikoorts en eczeem', kleur: '#fef9c3', aan: true,
         woorden: ['cetirizine', 'levocetirizine', 'loratadine', 'desloratadine', 'fexofenadine', 'ebastine', 'bilastine',
             'rupatadine', 'mizolastine', 'clemastine', 'azelastine', 'levocabastine', 'cromoglicinezuur', 'ketotifen',
             'olopatadine', 'zyrtec', 'xyzal', 'aerius', 'telfast', 'allergodil', 'livocab', 'opticrom', 'dymista',
-            'avamys', 'flixonase', 'nasonex', 'rhinocort', 'nasacort', 'beconase',
-            // neusspray met corticosteroïd
-            'flutic+neus', 'flutic+nasaal', 'mometas+neus', 'mometas+nasaal', 'budeson+neus', 'budeson+nasaal', 'beclomet+neus', 'beclomet+nasaal', 'triamcin+neus', 'triamcin+nasaal',
             // hormooncrèmes en -zalven
             'hydrocort+creme', 'hydrocort+zalf', 'hydrocort+lotion', 'hydrocort+emuls',
             'triamcin+creme', 'triamcin+zalf', 'triamcin+lotion', 'triamcin+emuls',
@@ -177,6 +189,7 @@ const MEDICIJN_STANDAARD_GROEPEN = [
     },
     {
         id: 'ontlasting', stijl: 'strook', icoon: 'colon', kleurStrook: '#a16207', naam: 'Ontlasting (obstipatie en diarree)', kleur: '#fef3c7', aan: true,
+        woordenNiet: ['cetomacrogol'], // cetomacrogolcrème is een indifferente crème
         woorden: ['macrogol', 'movicolon', 'forlax', 'lactulose', 'lactitol', 'magnesiumoxide', 'magnesiumhydroxide',
             'bisacodyl', 'dulcolax', 'sennosiden', 'senna', 'natriumpicosulfaat', 'docusaat', 'prucalopride', 'resolor',
             'naloxegol', 'methylnaltrexon', 'linaclotide', 'psyllium', 'ispaghula', 'metamucil', 'volcolon', 'microlax',
@@ -255,6 +268,15 @@ const MEDICIJN_STANDAARD_GROEPEN = [
         id: 'zenuwpijn', stijl: 'strook', icoon: 'nerve', kleurStrook: '#65a30d', naam: 'Zenuwpijnmedicatie', kleur: '#ecfccb', aan: true,
         // Amitriptyline/nortriptyline/duloxetine staan bij de psychofarmaca.
         woorden: ['pregabaline', 'gabapentine', 'lyrica', 'neurontin', 'capsaicine', 'qutenza', 'versatis']
+    },
+    {
+        id: 'indifferent', stijl: 'strook', icoon: 'topical', kleurStrook: '#a8a29e', naam: 'Indifferente middelen (zalven en crèmes)', kleur: '#fafaf9', aan: true,
+        // Achteraan: zalven mét werkzame stof (hormoon, antibioticum) vallen eerder in hun eigen groep.
+        // Paraffine alleen als zalf/crème: vloeibare paraffine (emulsie) is een laxeermiddel.
+        woorden: ['vaselin', 'paraffin+zalf', 'paraffin+creme', 'paraffin+vet', 'cetomacrogol', 'lanette', 'koelzalf',
+            'hydrofiele zalf', 'hydrofobe creme', 'unguentum', 'lanoline', 'wolvet', 'zinkoxide', 'zinkzalf', 'zinkolie',
+            'ureum+creme', 'ureum+zalf', 'ureum+lotion', 'carbamide+creme', 'carbamide+zalf', 'excipial', 'dermolin',
+            'basiscreme', 'basiszalf']
     }
 ];
 
@@ -269,7 +291,18 @@ const MEDICIJN_LABWAARDEN = {
     ldl: { label: 'LDL', codes: ['LDL/B/', 'LDLD/B/', 'LDL/B/PO'], decimalen: 1 },
     tsh: { label: 'TSH', codes: ['TSH/B/'] },
     ft4: { label: 'FT4', codes: ['FT4/B/'] },
-    alat: { label: 'ALAT', codes: ['ALAT/B/'] }
+    alat: { label: 'ALAT', codes: ['ALAT/B/'] },
+    // Keuze-meetwaarden voor de ketenzorg-badge (groep.keten), geen labeltje van hun eigen.
+    hbCvrm: { label: 'hoofdbehandelaar CVRM', codes: ['CVHB/KZ/'], keuze: true },
+    kzCvrm: { label: 'deelname ketenzorgprogramma CVRM', codes: ['CVKZ/KZ/'], keuze: true },
+    hbDm: { label: 'hoofdbehandelaar diabetes', codes: ['DMHB/TZ/'], keuze: true },
+    kzDm: { label: 'deelname ketenzorgprogramma diabetes', codes: ['DMKZ/TZ/'], keuze: true }
+};
+
+// groep.keten → welke meetwaarden de badge "HA Keten+" vormen.
+const MEDICIJN_KETENZORG = {
+    cvrm: { naam: 'CVRM', hb: 'hbCvrm', kz: 'kzCvrm' },
+    dm: { naam: 'diabetes', hb: 'hbDm', kz: 'kzDm' }
 };
 
 // Alle groepen in volgorde van voorrang, met de instellingen van de gebruiker toegepast.

@@ -1668,6 +1668,7 @@ function medicijn_markeringen() {
         const gevonden = {};
 
         recepten.forEach((recept) => {
+            medicijn_markeerUitgeschreven(recept);
             const receptRegels = recept.querySelectorAll('.rapport44-recept-regel');
             receptRegels.forEach((receptRegel) => {
                 medicijn_clearRegel(receptRegel);
@@ -1735,10 +1736,16 @@ function medicijn_labVoorPatient(patientId) {
             groepen.forEach((g) => (g.Uitslagen || []).forEach((u) => {
                 const key = codeKey.get(u.Memo) || codeKey.get(g.MetingType && g.MetingType.WCIAMemo);
                 const datum = new Date(u.Datum);
-                if (!key || isNaN(datum) || !u.WaardeDisplay) return;
+                if (!key || isNaN(datum) || (!u.WaardeDisplay && u.Waarde == null)) return;
                 if (nieuwste[key] && nieuwste[key].datum >= datum) return;
                 const def = MEDICIJN_LABWAARDEN[key];
-                nieuwste[key] = {
+                nieuwste[key] = def.keuze ? {
+                    // Keuze-meetwaarde (hoofdbehandelaar, ketenzorg): antwoordtekst én -nummer bewaren.
+                    tekst: String(u.WaardeDisplay || ''),
+                    waarde: u.Waarde,
+                    datum,
+                    naam: u.MetingOmschrijving || (g.MetingType && g.MetingType.Naam) || def.label
+                } : {
                     // Zonder eenheid in het labeltje ("HbA1c 53 mrt'26"); de eenheid staat in de tooltip.
                     tekst: medicijn_waardeTekst(u, def),
                     eenheid: u.MetingEenheid || '',
@@ -1791,6 +1798,61 @@ function medicijn_labKeysVoorRegel(rr) {
     return g.lab;
 }
 
+// Ketenzorg-badge: hoofdbehandelaar (HA/Spec) en deelname ketenzorgprogramma (Keten+/Keten-).
+// Antwoorden van de keuze-meetwaarden: huisarts = 48, specialist = 49, overig/onbekend = 212; ja = 1, nee = 2.
+// Bricks geeft de tekst in WaardeDisplay; het nummer kan in Waarde staan (soms ×1000).
+function medicijn_keuzeNummer(w) {
+    const n = Number(w && w.waarde);
+    if (!isFinite(n) || n === 0) return null;
+    return n >= 1000 && n % 1000 === 0 ? n / 1000 : n;
+}
+
+function medicijn_hoofdbehandelaar(w) {
+    if (!w) return null;
+    const t = w.tekst.toLowerCase();
+    const n = medicijn_keuzeNummer(w);
+    if (/huisarts/.test(t) || n === 48) return 'HA';
+    if (/specialist/.test(t) || n === 49) return 'Spec';
+    return '?';
+}
+
+function medicijn_ketenDeelname(w) {
+    if (!w) return null;
+    const t = w.tekst.toLowerCase().trim();
+    const n = medicijn_keuzeNummer(w);
+    if (/^ja\b/.test(t) || n === 1) return 'Keten+';
+    if (/^nee\b/.test(t) || n === 2) return 'Keten-';
+    return 'Keten?';
+}
+
+function medicijn_ketenKeysVoorRegel(rr) {
+    const k = rr.__biGroep && MEDICIJN_KETENZORG[rr.__biGroep.keten];
+    return k ? [k.hb, k.kz] : [];
+}
+
+function medicijn_ketenBadge(rr, labs) {
+    const k = rr.__biGroep && MEDICIJN_KETENZORG[rr.__biGroep.keten];
+    if (!k) return null;
+    const hb = labs[k.hb];
+    const kz = labs[k.kz];
+    if (!hb && !kz) return null;
+    const delen = [medicijn_hoofdbehandelaar(hb), medicijn_ketenDeelname(kz)].filter(Boolean);
+    const regel = (w, def, kort) => `${w.naam || def.label}: ${w.tekst || kort} (geregistreerd ${w.datum.toLocaleDateString('nl-NL')})`;
+    const titel = [
+        hb ? regel(hb, MEDICIJN_LABWAARDEN[k.hb], medicijn_hoofdbehandelaar(hb)) : `Geen hoofdbehandelaar ${k.naam} geregistreerd`,
+        kz ? regel(kz, MEDICIJN_LABWAARDEN[k.kz], medicijn_ketenDeelname(kz)) : `Geen deelname ketenzorgprogramma ${k.naam} geregistreerd`
+    ].join('\n');
+    const badge = document.createElement('span');
+    badge.textContent = delen.join(' ');
+    badge.title = titel;
+    const spec = delen.includes('Spec');
+    const uit = delen.includes('Keten-');
+    badge.style.cssText = 'font-size:11px;padding:0 6px;border-radius:8px;white-space:nowrap;cursor:help;'
+        + (spec || uit ? 'background:#edf2f7;border:1px solid #a0aec0;color:#2d3748;'
+            : 'background:#f0fff4;border:1px solid #9ae6b4;color:#276749;');
+    return badge;
+}
+
 // 'oranje' = actie nodig: geen waarde of laatste waarde ouder dan 13 maanden.
 // 'geel'   = afwijkend: eGFR < 30 (bij DOAC < 50), of afwijkend volgens het lab (niet bij HbA1c).
 // ''       = in orde.
@@ -1804,6 +1866,34 @@ function medicijn_labNiveau(key, w, groep, rustig) {
     }
     if (key === 'hba1c') return '';
     return w.afwijkend ? 'geel' : '';
+}
+
+// Uitgeschreven patiënt: Bricks zet "UITGESCHREVEN" in de (groene) patiëntbalk boven het recept.
+// Die balk maken we rood. De balk = het eerste gekleurde (niet witte) blok rond de patiëntnaam.
+function medicijn_patientBalk(recept) {
+    const naamEl = recept.querySelector('[title^="Open dossier"]');
+    for (let el = naamEl; el && el !== recept.parentElement; el = el.parentElement) {
+        const m = getComputedStyle(el).backgroundColor.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/);
+        if (!m || (m[4] !== undefined && Number(m[4]) === 0)) continue;
+        if (Number(m[1]) + Number(m[2]) + Number(m[3]) > 700) continue; // wit/lichtgrijs: niet de balk
+        return el;
+    }
+    return null;
+}
+
+function medicijn_markeerUitgeschreven(recept) {
+    const oud = recept.querySelector('[data-bi-uitgeschreven]');
+    const balk = oud || medicijn_patientBalk(recept);
+    if (!balk) return;
+    if (/\bUITGESCHREVEN\b/.test(balk.textContent || '')) {
+        balk.setAttribute('data-bi-uitgeschreven', '1');
+        balk.style.setProperty('background-color', '#c53030', 'important');
+        balk.style.setProperty('border-color', '#9b2c2c', 'important');
+    } else if (oud) {
+        oud.removeAttribute('data-bi-uitgeschreven');
+        oud.style.removeProperty('background-color');
+        oud.style.removeProperty('border-color');
+    }
 }
 
 // patientId van een recept-blok, uit de bridge-lijst (GetReceptRegels). Zelfde volgorde als de API;
@@ -1825,7 +1915,8 @@ function medicijn_patientIdVoorRecept(recept, i, lijst) {
 
 async function medicijn_toonLabwaarden(receptenDom) {
     const nodig = Array.from(receptenDom).some((r) =>
-        Array.from(r.querySelectorAll('.rapport44-recept-regel')).some((rr) => medicijn_labKeysVoorRegel(rr).length));
+        Array.from(r.querySelectorAll('.rapport44-recept-regel')).some((rr) =>
+            medicijn_labKeysVoorRegel(rr).length || medicijn_ketenKeysVoorRegel(rr).length));
     if (!nodig || !window.bricksBridge) return;
     const lijst = await window.bricksBridge.autorisatieRecepten();
     if (!Array.isArray(lijst) || !lijst.length) return;
@@ -1836,7 +1927,7 @@ async function medicijn_toonLabwaarden(receptenDom) {
         if (!patientId) continue;
 
         const regels = Array.from(recept.querySelectorAll('.rapport44-recept-regel'))
-            .filter((rr) => medicijn_labKeysVoorRegel(rr).length);
+            .filter((rr) => medicijn_labKeysVoorRegel(rr).length || medicijn_ketenKeysVoorRegel(rr).length);
         if (!regels.length) continue;
         let labs;
         try {
@@ -1877,6 +1968,9 @@ async function medicijn_toonLabwaarden(receptenDom) {
                             : 'background:#fff;border:1px solid #cbd5e0;color:#4a5568;');
                 houder.appendChild(chip);
             });
+            const badge = medicijn_ketenBadge(rr, labs);
+            if (badge) houder.appendChild(badge);
+            if (!houder.childNodes.length) return;
             // Binnen de naam: de regel is een (sub)grid, een extra kind zou alle cellen laten verschuiven.
             // Klik op een labeltje mag de voorschrijfgeschiedenis (klik op de naam) niet openen.
             houder.addEventListener('click', (e) => e.stopPropagation());

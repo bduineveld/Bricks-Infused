@@ -752,16 +752,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Tandem (Juvoly): toestemming voor app.tandemhealth.ai is optioneel en wordt pas gevraagd als
   // iemand de koppeling aanzet. Vragen moet direct vanuit een klik.
-  const TANDEM_ORIGINS = ['https://app.tandemhealth.ai/*'];
-  const juvolyCb = document.getElementById('opt-juvoly');
-  const werkTandemToestemmingBij = () => {
-    chrome.permissions.contains({ origins: TANDEM_ORIGINS }, (heeft) => {
-      document.getElementById('juvoly-toestemming').hidden = !juvolyCb.checked || !!heeft;
+  // Functiedeclaraties: getStorage hierboven roept werkTandemToestemmingBij al aan.
+  function werkTandemToestemmingBij() {
+    chrome.permissions.contains({ origins: ['https://app.tandemhealth.ai/*'] }, (heeft) => {
+      document.getElementById('juvoly-toestemming').hidden = !document.getElementById('opt-juvoly').checked || !!heeft;
     });
-  };
-  const vraagTandemToestemming = () => {
-    chrome.permissions.request({ origins: TANDEM_ORIGINS }, () => werkTandemToestemmingBij());
-  };
+  }
+  function vraagTandemToestemming() {
+    chrome.permissions.request({ origins: ['https://app.tandemhealth.ai/*'] }, () => werkTandemToestemmingBij());
+  }
+  const juvolyCb = document.getElementById('opt-juvoly');
   juvolyCb.addEventListener('change', () => {
     if (juvolyCb.checked) vraagTandemToestemming();
     else werkTandemToestemmingBij();

@@ -371,9 +371,9 @@ function juvoly_ensureSpinnerStyle() {
 function juvoly_btnStyle(kind) {
   const base = 'display:inline-flex;align-items:center;justify-content:center;height:28px;width:28px;padding:0;border-radius:6px;font-size:13px;font-weight:700;border:1px solid transparent;cursor:pointer;margin-left:4px;line-height:1;flex-shrink:0;';
   const styles = {
-    // Tandem-knop (voorheen Juvoly): beeldmerk op Tandems pastelverloop; verbonden = dikkere rand.
-    juvoly: 'display:inline-flex;align-items:center;justify-content:center;height:28px;width:34px;padding:0;border-radius:6px;border:1px solid #b7d7c4;cursor:pointer;margin-left:6px;flex-shrink:0;background:linear-gradient(135deg,#e2f8cf,#fbfaf2 55%,#c9ecf6);color:#000;',
-    juvolyReady: 'display:inline-flex;align-items:center;justify-content:center;height:28px;width:34px;padding:0;border-radius:6px;border:2px solid #2f855a;cursor:pointer;margin-left:6px;flex-shrink:0;background:linear-gradient(135deg,#c9f2ad,#eef8ea 55%,#a9def0);color:#000;',
+    // Tandem-knop (voorheen Juvoly): origineel icoon; verbonden = groene ring.
+    juvoly: 'display:inline-flex;align-items:center;justify-content:center;height:28px;width:28px;padding:0;border-radius:7px;border:1px solid transparent;cursor:pointer;margin-left:6px;flex-shrink:0;background:#cafa84;',
+    juvolyReady: 'display:inline-flex;align-items:center;justify-content:center;height:28px;width:28px;padding:0;border-radius:7px;border:1px solid transparent;cursor:pointer;margin-left:6px;flex-shrink:0;background:#cafa84;box-shadow:0 0 0 2px #2f855a;',
     record: base + 'background:#e53e3e;color:#fff;border-color:#c53030;',
     pause: base + 'background:#744210;color:#fefcbf;border-color:#975a16;',
     summarize: base + 'background:#2b6cb0;color:#fff;border-color:#2c5282;',
@@ -383,24 +383,13 @@ function juvoly_btnStyle(kind) {
   return styles[kind] || styles.muted;
 }
 
-// Beeldmerk van Tandem (van tandemhealth.ai), kleurt mee met currentColor.
+// Origineel Tandem-beeldmerk (tandem-klein.svg, aangeleverd) op Tandems limegroen, zoals hun favicon.
 function juvoly_tandemIcon() {
-  const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 35.2 20.6');
-  svg.setAttribute('width', '22');
-  svg.setAttribute('height', '13');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.style.cssText = 'display:block;fill:currentColor;pointer-events:none;';
-  [
-    'M 18.328 4.83 L 14.249 18.667 C 12.883 19.349 11.378 19.702 9.851 19.7 C 4.41 19.7 0 15.29 0 9.851 C 0 4.411 4.41 0 9.851 0 C 13.458 0 16.612 1.938 18.328 4.829 Z',
-    'M 35.115 10.536 C 35.115 16.061 30.603 20.556 25.059 20.556 C 23.285 20.558 21.543 20.091 20.007 19.203 C 18.523 18.342 17.283 17.117 16.404 15.644 L 16.358 15.568 L 17.259 12.525 L 17.466 13.12 C 18.578 16.293 21.575 18.416 24.937 18.414 C 26.904 18.416 28.801 17.685 30.258 16.363 C 32.112 14.688 33.057 12.23 32.804 9.744 C 32.609 7.808 31.702 6.013 30.258 4.709 C 28.802 3.386 26.905 2.655 24.938 2.657 C 23.172 2.65 21.455 3.239 20.066 4.33 L 19.567 4.719 L 20.489 1.606 L 20.568 1.567 C 21.962 0.87 23.5 0.51 25.058 0.515 C 30.603 0.515 35.115 5.01 35.115 10.536 Z'
-  ].forEach((d) => {
-    const path = document.createElementNS(ns, 'path');
-    path.setAttribute('d', d);
-    svg.appendChild(path);
-  });
-  return svg;
+  const img = document.createElement('img');
+  img.src = chrome.runtime.getURL('tandem-klein.svg');
+  img.alt = '';
+  img.style.cssText = 'display:block;width:19px;height:auto;pointer-events:none;';
+  return img;
 }
 
 function juvoly_icon(name) {
@@ -442,7 +431,7 @@ function juvoly_paintToolbar() {
   try {
     openBtn.disabled = !!juvolyBusy;
     openBtn.style.cssText = juvoly_btnStyle(showControls ? 'juvolyReady' : 'juvoly');
-    if (!openBtn.querySelector('svg')) openBtn.replaceChildren(juvoly_tandemIcon());
+    if (!openBtn.querySelector('img')) openBtn.replaceChildren(juvoly_tandemIcon());
     openBtn.setAttribute('aria-label', 'Tandem');
     openBtn.title = showControls
       ? 'Naar Juvoly (Tandem)-tab'
@@ -802,7 +791,131 @@ function juvoly_reviewOnce(soep, opts) {
   });
 }
 
-async function juvoly_importMany(notes) {
+/** Haalt verslag/probleem i op, in de vorm die listNotes gaf ('tabs' of 'sections'). */
+async function juvoly_fetchNote(i, mode) {
+  if (mode !== 'sections') {
+    const sel = await juvoly_send('juvoly.selectNote', { index: i });
+    if (!sel.ok) return { ok: false, error: sel.error || `Verslag ${i + 1} niet beschikbaar.` };
+    return juvoly_send('juvoly.getSoep');
+  }
+  return juvoly_send('juvoly.getSoep', { section: i });
+}
+
+// Welke verslagen al zijn overgenomen (zolang de lijst in Tandem hetzelfde blijft)
+let juvolyImported = { key: '', done: new Set() };
+
+function juvoly_importedSet(notes) {
+  const key = notes.map((n) => n.name).join('\u0001');
+  if (juvolyImported.key !== key) juvolyImported = { key, done: new Set() };
+  return juvolyImported.done;
+}
+
+/** Keuze bij meerdere problemen: één verslag naar het huidige contact, of alles achter elkaar. */
+function juvoly_showNoteChoice(notes) {
+  return new Promise((resolve) => {
+    juvoly_closeModal();
+    juvolyModalCancelCb = () => resolve(null);
+    const done = juvoly_importedSet(notes);
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2147483646;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;padding:16px;';
+    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) juvoly_closeModal(); });
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-width:420px;width:100%;max-height:90vh;overflow:auto;color:#2d3748;';
+    overlay.appendChild(modal);
+
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;gap:12px;padding:16px 20px 4px;';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:1.15em;font-weight:600;flex:1;color:#c05600;';
+    title.textContent = 'Tandem: welk probleem overnemen?';
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Sluiten');
+    close.textContent = '×';
+    close.style.cssText = 'background:transparent;border:none;font-size:22px;cursor:pointer;color:#718096;line-height:1;';
+    close.addEventListener('click', juvoly_closeModal);
+    header.append(title, close);
+    modal.appendChild(header);
+
+    const contact = juvoly_selectedContact();
+    const hint = document.createElement('div');
+    hint.style.cssText = 'padding:0 20px 12px;font-size:12px;color:#718096;';
+    hint.textContent = `Tandem heeft ${notes.length} verslagen. Kies er één voor contact ${contact}, of neem ze allemaal over (elk in een eigen contact).`;
+    modal.appendChild(hint);
+
+    const pick = (value) => {
+      juvolyModalCancelCb = null;
+      juvoly_closeModal();
+      resolve(value);
+    };
+
+    const body = document.createElement('div');
+    body.style.cssText = 'padding:0 20px 8px;display:flex;flex-direction:column;gap:6px;';
+    let firstOpen = null;
+    notes.forEach((n, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      const isDone = done.has(i);
+      b.style.cssText = `display:flex;align-items:center;gap:8px;text-align:left;padding:9px 12px;border:1px solid ${isDone ? '#c6f6d5' : '#e2e8f0'};border-radius:6px;background:${isDone ? '#f0fff4' : '#f7fafc'};font-size:13px;color:#2d3748;cursor:pointer;`;
+      const nr = document.createElement('span');
+      nr.style.cssText = 'font-weight:600;color:#718096;min-width:18px;';
+      nr.textContent = `${i + 1}.`;
+      const name = document.createElement('span');
+      name.style.cssText = 'flex:1;';
+      name.textContent = n.name || `Verslag ${i + 1}`;
+      b.append(nr, name);
+      if (isDone) {
+        const mark = document.createElement('span');
+        mark.style.cssText = 'font-size:11px;color:#2f855a;';
+        mark.textContent = '✓ overgenomen';
+        b.appendChild(mark);
+      } else if (firstOpen == null) firstOpen = b;
+      b.addEventListener('mouseenter', () => { b.style.borderColor = '#dd6b20'; });
+      b.addEventListener('mouseleave', () => { b.style.borderColor = isDone ? '#c6f6d5' : '#e2e8f0'; });
+      b.addEventListener('click', () => pick({ index: i }));
+      body.appendChild(b);
+    });
+    modal.appendChild(body);
+
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid #e2e8f0;background:#f7fafc;margin-top:8px;';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Annuleren';
+    cancel.style.cssText = 'border:none;background:transparent;color:#718096;padding:8px 14px;font-size:13px;cursor:pointer;';
+    cancel.addEventListener('click', juvoly_closeModal);
+    const all = document.createElement('button');
+    all.type = 'button';
+    all.textContent = `Alles overnemen (vanaf contact ${contact})`;
+    all.style.cssText = 'border:1px solid #cbd5e0;background:#fff;color:#2d3748;padding:8px 14px;border-radius:6px;font-size:13px;cursor:pointer;';
+    all.addEventListener('click', () => pick({ all: true }));
+    footer.append(cancel, all);
+    modal.appendChild(footer);
+
+    document.body.appendChild(overlay);
+    juvolyModalEl = overlay;
+    document.addEventListener('keydown', juvoly_onModalKey);
+    (firstOpen || body.querySelector('button'))?.focus();
+  });
+}
+
+async function juvoly_importOne(notes, mode, i) {
+  const resp = await juvoly_fetchNote(i, mode);
+  if (!resp.ok) {
+    juvoly_toast(resp.error || `Verslag ${i + 1} niet beschikbaar.`, 'error');
+    return;
+  }
+  const result = await juvoly_reviewOnce(resp.soep || { S: '', O: '', E: '', P: '' }, {
+    title: `Tandem ${i + 1}/${notes.length}: ${notes[i].name} → contact ${juvoly_selectedContact()}`
+  });
+  if (!result) return;
+  juvoly_importedSet(notes).add(i);
+  if (result.applied.includes('E')) juvoly_triggerIcpcPrompt();
+}
+
+async function juvoly_importMany(notes, mode) {
   const start = juvoly_selectedContact();
   const room = JUVOLY_MAX_CONTACTS - start + 1;
   if (notes.length > room) {
@@ -815,12 +928,7 @@ async function juvoly_importMany(notes) {
       juvoly_toast(`Kon niet naar contact ${contact} in Bricks.`, 'error');
       return;
     }
-    const sel = await juvoly_send('juvoly.selectNote', { index: i });
-    if (!sel.ok) {
-      juvoly_toast(sel.error || `Verslag ${i + 1} niet beschikbaar.`, 'error');
-      return;
-    }
-    const resp = await juvoly_send('juvoly.getSoep');
+    const resp = await juvoly_fetchNote(i, mode);
     if (!resp.ok) {
       juvoly_toast(resp.error || `Verslag ${i + 1} niet beschikbaar.`, 'error');
       return;
@@ -830,6 +938,7 @@ async function juvoly_importMany(notes) {
       applyLabel: i < count - 1 ? 'Overnemen, daarna ICPC kiezen' : 'Overnemen in SOEP'
     });
     if (!result) return; // geannuleerd
+    juvoly_importedSet(notes).add(i);
     if (!result.applied.includes('E')) continue;
     juvoly_triggerIcpcPrompt();
     if (i < count - 1 && !juvoly_activeIcpc()) {
@@ -847,7 +956,10 @@ async function juvoly_onImport() {
   try {
     const list = await juvoly_send('juvoly.listNotes');
     if (list.ok && list.notes && list.notes.length > 1) {
-      await juvoly_importMany(list.notes);
+      const choice = await juvoly_showNoteChoice(list.notes);
+      if (!choice) return;
+      if (choice.all) await juvoly_importMany(list.notes, list.mode);
+      else await juvoly_importOne(list.notes, list.mode, choice.index);
       return;
     }
     // Eén verslag: altijd vers ophalen, de gebruiker kan het in Juvoly nog aangepast hebben

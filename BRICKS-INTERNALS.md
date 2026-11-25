@@ -365,6 +365,9 @@ When adding features: **resolve active patientId first**, then API or scoped DOM
   `KREM/O/FB` (MDRD, vervallen) + `/PO`; kalium `K/B/`; Hb `HB/B/`; HbA1c `HBAC/B/` (IFCC), `HBAP/B/PO`, old
   `HB1C/B/`, `GLHB/B/`; LDL `LDL/B/`, `LDLD/B/`, `LDL/B/PO`; TSH `TSH/B/`; FT4 `FT4/B/`; ALAT `ALAT/B/`.
   Used in `MEDICIJN_LABWAARDEN` (medicijn_groepen.js).
+- Keuze-meetwaarden (VraagType EnkelvoudigeKeuze): hoofdbehandelaar CVRM `CVHB/KZ/`, diabetes `DMHB/TZ/`
+  (antwoorden 48 huisarts, 49 specialist, 212 overig/onbekend); deelname ketenzorgprogramma CVRM `CVKZ/KZ/`,
+  diabetes `DMKZ/TZ/` (1 ja, 2 nee). Shape of their uitslagen not yet seen (none in testomgeving patients 1–300).
 
 ### Brief PDF export (`ToonBericht`)
 

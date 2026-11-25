@@ -4,6 +4,15 @@
 
 const JUVOLY_SOURCE = 'bricks-infused-juvoly';
 
+// Houd een Web Lock vast zolang de tab open is: Chrome bevriest geen tabbladen die een lock
+// vasthouden, zodat Tandem op de achtergrond direct reageert op Opnemen (zie tandemWekken in background.js).
+try {
+  if (navigator.locks && !window.__biTandemLock) {
+    window.__biTandemLock = true;
+    navigator.locks.request('bricks-infused-tandem-wakker-' + Math.random().toString(36).slice(2), () => new Promise(() => {}));
+  }
+} catch (_) { /* geen Web Locks */ }
+
 function juvoly_clean(s) {
   return String(s || '')
     .replace(/\u00ad/g, '')
@@ -155,6 +164,40 @@ function juvoly_readSoepFromRows() {
   return out;
 }
 
+/**
+ * Meerdere problemen op één verslagpagina (zonder aparte tabbladen): de S/O/E/P-rijen
+ * herhalen zich. Elke keer dat een letter terugkomt, begint een nieuw probleem.
+ */
+function juvoly_readSoepGroups() {
+  const groups = [];
+  let cur = null;
+  const rows = [...document.querySelectorAll('li')].filter((li) =>
+    li.querySelector(':scope > label') && li.querySelector(':scope > [class*="group/content"]'));
+  rows.forEach((li) => {
+    const key = JUVOLY_SOEP_LABELS[juvoly_clean(li.querySelector(':scope > label').textContent).toLowerCase()];
+    if (!key) return;
+    if (!cur || cur.seen[key]) {
+      cur = { soep: { S: '', O: '', E: '', P: '' }, seen: {} };
+      groups.push(cur);
+    }
+    cur.seen[key] = true;
+    const content = li.querySelector(':scope > [class*="group/content"]');
+    const box = content.querySelector('[contenteditable="true"]') || content.querySelector('.w-full.grow') || content;
+    cur.soep[key] = String(box.innerText || '').replace(/\u00ad/g, '').replace(/\r/g, '').replace(/\n\s*\n+/g, '\n').trim();
+  });
+  return groups.filter((g) => juvoly_hasSoepText(g.soep)).map((g, i) => ({
+    soep: g.soep,
+    name: juvoly_groupName(g, i)
+  }));
+}
+
+/** Naam van een probleem: de eerste regel van E (de conclusie), anders "Probleem n". */
+function juvoly_groupName(group, i) {
+  const e = (group.soep.E || '').split('\n')[0].trim();
+  if (e) return e.length > 60 ? e.slice(0, 57) + '…' : e;
+  return `Probleem ${i + 1}`;
+}
+
 function juvoly_readSoepFromTextareas() {
   const labels = ['Subjectief', 'Objectief', 'Evaluatie', 'Plan'];
   const keys = ['S', 'O', 'E', 'P'];
@@ -194,18 +237,29 @@ function juvoly_readSoepFromDom() {
  */
 function juvoly_noteTabs() {
   const tabs = [...document.querySelectorAll('[role="tab"]')].filter(juvoly_isVisible);
-  const transcript = tabs.find((t) => juvoly_clean(t.innerText) === 'Transcript');
-  if (!transcript) return [];
-  return tabs.filter((t) => t.parentElement === transcript.parentElement
+  const anchor = tabs.find((t) => /^(Transcript|Context)$/i.test(juvoly_clean(t.innerText)));
+  if (!anchor) return [];
+  return tabs.filter((t) => t.parentElement === anchor.parentElement
     && !/^(Context|Transcript)$/i.test(juvoly_clean(t.innerText)));
 }
 
+/**
+ * Verslagen om over te nemen. mode 'tabs': één tabblad per verslag (na opsplitsen).
+ * mode 'sections': één tabblad met meerdere problemen onder elkaar.
+ */
 function juvoly_listNotes() {
-  const notes = juvoly_noteTabs().map((t) => ({
+  const tabs = juvoly_noteTabs();
+  if (tabs.length <= 1 && juvoly_isNotesReady()) {
+    const groups = juvoly_readSoepGroups();
+    if (groups.length > 1) {
+      return { ok: true, mode: 'sections', notes: groups.map((g) => ({ name: g.name })) };
+    }
+  }
+  const notes = tabs.map((t) => ({
     name: juvoly_clean(t.innerText),
     selected: t.getAttribute('aria-selected') === 'true'
   }));
-  return { ok: notes.length > 0, notes, error: notes.length ? undefined : 'Geen verslagen gevonden in Tandem.' };
+  return { ok: notes.length > 0, mode: 'tabs', notes, error: notes.length ? undefined : 'Geen verslagen gevonden in Tandem.' };
 }
 
 async function juvoly_selectNote(index) {
@@ -516,8 +570,13 @@ async function juvoly_summarize() {
   return juvoly_summaryResult('summarized');
 }
 
-async function juvoly_getSoep() {
+async function juvoly_getSoep(section) {
   if (juvoly_isNotesReady()) {
+    if (Number.isInteger(section)) {
+      const g = juvoly_readSoepGroups()[section];
+      if (!g) return { ok: false, error: `Probleem ${section + 1} niet gevonden in Tandem.`, status: juvoly_status() };
+      return { ok: true, soep: g.soep, url: location.href, status: juvoly_status() };
+    }
     return { ok: true, soep: juvoly_readSoepFromDom(), url: location.href, status: juvoly_status() };
   }
   if (juvoly_isNotesPage()) {
@@ -569,7 +628,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse(await juvoly_splitApply(message.values, message.mode, message.removed));
           break;
         case 'juvoly.getSoep':
-          sendResponse(await juvoly_getSoep());
+          sendResponse(await juvoly_getSoep(message.section));
           break;
         case 'juvoly.stop':
           // legacy: beëindigen
