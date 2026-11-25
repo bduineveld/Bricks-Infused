@@ -301,8 +301,8 @@ const MEDICIJN_LABWAARDEN = {
 
 // groep.keten → welke meetwaarden de badge "HA Keten+" vormen.
 const MEDICIJN_KETENZORG = {
-    cvrm: { naam: 'CVRM', hb: 'hbCvrm', kz: 'kzCvrm' },
-    dm: { naam: 'diabetes', hb: 'hbDm', kz: 'kzDm' }
+    cvrm: { naam: 'CVRM', kort: 'CVRM', hb: 'hbCvrm', kz: 'kzCvrm' },
+    dm: { naam: 'diabetes', kort: 'DM', hb: 'hbDm', kz: 'kzDm' }
 };
 
 // Alle groepen in volgorde van voorrang, met de instellingen van de gebruiker toegepast.

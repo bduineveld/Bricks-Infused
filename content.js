@@ -1736,7 +1736,8 @@ function medicijn_labVoorPatient(patientId) {
             groepen.forEach((g) => (g.Uitslagen || []).forEach((u) => {
                 const key = codeKey.get(u.Memo) || codeKey.get(g.MetingType && g.MetingType.WCIAMemo);
                 const datum = new Date(u.Datum);
-                if (!key || isNaN(datum) || (!u.WaardeDisplay && u.Waarde == null)) return;
+                // Lege keuze-uitslagen (oude registraties: WaardeDisplay "" en Waarde "0") overslaan.
+                if (!key || isNaN(datum) || (!u.WaardeDisplay && (u.Waarde == null || Number(u.Waarde) === 0))) return;
                 if (nieuwste[key] && nieuwste[key].datum >= datum) return;
                 const def = MEDICIJN_LABWAARDEN[key];
                 nieuwste[key] = def.keuze ? {
@@ -1813,16 +1814,16 @@ function medicijn_hoofdbehandelaar(w) {
     const n = medicijn_keuzeNummer(w);
     if (/huisarts/.test(t) || n === 48) return 'HA';
     if (/specialist/.test(t) || n === 49) return 'Spec';
-    return '?';
+    return 'HB?'; // overig/onbekend (212)
 }
 
 function medicijn_ketenDeelname(w) {
     if (!w) return null;
     const t = w.tekst.toLowerCase().trim();
     const n = medicijn_keuzeNummer(w);
-    if (/^ja\b/.test(t) || n === 1) return 'Keten+';
-    if (/^nee\b/.test(t) || n === 2) return 'Keten-';
-    return 'Keten?';
+    if (/^ja\b/.test(t) || n === 1) return 'keten ✓';
+    if (/^nee\b/.test(t) || n === 2) return 'keten ✗';
+    return 'keten ?';
 }
 
 function medicijn_ketenKeysVoorRegel(rr) {
@@ -1830,26 +1831,31 @@ function medicijn_ketenKeysVoorRegel(rr) {
     return k ? [k.hb, k.kz] : [];
 }
 
+// Tweedelig label: [DM | HA · keten ✓]. Groen = huisarts én in de keten (het gewone geval),
+// grijs = iets anders (specialist, niet in keten, onbekend of niet geregistreerd).
 function medicijn_ketenBadge(rr, labs) {
     const k = rr.__biGroep && MEDICIJN_KETENZORG[rr.__biGroep.keten];
     if (!k) return null;
     const hb = labs[k.hb];
     const kz = labs[k.kz];
-    if (!hb && !kz) return null;
     const delen = [medicijn_hoofdbehandelaar(hb), medicijn_ketenDeelname(kz)].filter(Boolean);
     const regel = (w, def, kort) => `${w.naam || def.label}: ${w.tekst || kort} (geregistreerd ${w.datum.toLocaleDateString('nl-NL')})`;
     const titel = [
         hb ? regel(hb, MEDICIJN_LABWAARDEN[k.hb], medicijn_hoofdbehandelaar(hb)) : `Geen hoofdbehandelaar ${k.naam} geregistreerd`,
         kz ? regel(kz, MEDICIJN_LABWAARDEN[k.kz], medicijn_ketenDeelname(kz)) : `Geen deelname ketenzorgprogramma ${k.naam} geregistreerd`
     ].join('\n');
+    const groen = delen.includes('HA') && delen.includes('keten ✓');
     const badge = document.createElement('span');
-    badge.textContent = delen.join(' ');
     badge.title = titel;
-    const spec = delen.includes('Spec');
-    const uit = delen.includes('Keten-');
-    badge.style.cssText = 'font-size:11px;padding:0 6px;border-radius:8px;white-space:nowrap;cursor:help;'
-        + (spec || uit ? 'background:#edf2f7;border:1px solid #a0aec0;color:#2d3748;'
-            : 'background:#f0fff4;border:1px solid #9ae6b4;color:#276749;');
+    badge.style.cssText = 'display:inline-flex;font-size:11px;border-radius:8px;overflow:hidden;white-space:nowrap;cursor:help;'
+        + 'border:1px solid ' + (groen ? '#9ae6b4' : '#a0aec0') + ';';
+    const prog = document.createElement('span');
+    prog.textContent = k.kort;
+    prog.style.cssText = 'padding:0 5px;font-weight:600;color:#fff;background:' + (groen ? '#276749' : '#4a5568') + ';';
+    const rest = document.createElement('span');
+    rest.textContent = delen.length ? delen.join(' · ') : 'niet geregistreerd';
+    rest.style.cssText = 'padding:0 5px;' + (groen ? 'background:#f0fff4;color:#276749;' : 'background:#edf2f7;color:#2d3748;');
+    badge.append(prog, rest);
     return badge;
 }
 

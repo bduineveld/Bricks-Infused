@@ -7,7 +7,7 @@
 
 ## Wensen
 - [ ] Live testen: groep Indifferente middelen (tube-icoon) — vaseline, cetomacrogol, lanette, zinkoxide, ureum
-- [ ] Live testen: ketenzorg-badge (HA/Spec, Keten+/-) bij bloeddruk- en diabetesmedicatie in autorisatie — vorm van keuze-uitslagen (WaardeDisplay/Waarde) uit GetUitslagenByWCIACodes nog niet gezien
+- [ ] Live testen: ketenzorg-badge [DM | HA · keten ✓] / niet geregistreerd bij bloeddruk- en diabetesmedicatie in autorisatie — API-vorm geverifieerd met testpatiënt 15626 (Broekpolder)
 
 - [ ] Gedrag van Enter aanpassen.
 - [ ] Tandem 'in slaap' (opname start pas bij openen tab) live testen: tab niet meer weggooien, bevroren tab even wekken, Web Lock.

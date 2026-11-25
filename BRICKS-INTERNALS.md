@@ -367,7 +367,8 @@ When adding features: **resolve active patientId first**, then API or scoped DOM
   Used in `MEDICIJN_LABWAARDEN` (medicijn_groepen.js).
 - Keuze-meetwaarden (VraagType EnkelvoudigeKeuze): hoofdbehandelaar CVRM `CVHB/KZ/`, diabetes `DMHB/TZ/`
   (antwoorden 48 huisarts, 49 specialist, 212 overig/onbekend); deelname ketenzorgprogramma CVRM `CVKZ/KZ/`,
-  diabetes `DMKZ/TZ/` (1 ja, 2 nee). Shape of their uitslagen not yet seen (none in testomgeving patients 1–300).
+  diabetes `DMKZ/TZ/` (1 ja, 2 nee). Uitslagen: `WaardeDisplay` = answer text ("huisarts", "ja"), `Waarde` = answer number as string ("48", "1");
+  old registrations can be empty (`WaardeDisplay` "", `Waarde` "0").
 
 ### Brief PDF export (`ToonBericht`)
 
