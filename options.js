@@ -719,6 +719,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('opt-klantnummer').value = data.klantnummer || '';
     document.getElementById('opt-knoppen').checked = data.communicatieKnoppen !== false;
     document.getElementById('opt-resizer').checked = data.journaalResizer !== false;
+    document.getElementById('opt-enter').checked = data.enterNieuweRegel !== false;
+    document.getElementById('opt-soep-opslaan').checked = data.soepOpslaanKnop !== false;
     document.getElementById('opt-declareren').checked = data.declarerenNietOpGebeurd !== false;
     document.getElementById('opt-juvoly').checked = !!data.juvolyKnop;
     werkTandemToestemmingBij();
@@ -773,6 +775,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const klantnummer = document.getElementById('opt-klantnummer').value.trim();
     const communicatieKnoppen = document.getElementById('opt-knoppen').checked;
     const journaalResizer = document.getElementById('opt-resizer').checked;
+    const enterNieuweRegel = document.getElementById('opt-enter').checked;
+    const soepOpslaanKnop = document.getElementById('opt-soep-opslaan').checked;
     const declarerenNietOpGebeurd = document.getElementById('opt-declareren').checked;
     const juvolyKnop = document.getElementById('opt-juvoly').checked;
     const uprevent = document.getElementById('opt-uprevent').checked;
@@ -789,7 +793,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const medicijnLocaties = document.getElementById('opt-medicijn-locatie').checked;
     const medicijnLocatieGroepen = document.getElementById('opt-medicijn-locatiegroepen').value.trim();
     chrome.storage.local.set({ [LOCATIEKEUZE_SLEUTEL]: document.getElementById('opt-medicijn-locatiekeuze').value });
-    setStorage({ postTypenUit, postWeglaten, postKopjes, postZdContact, medicijnLabwaarden, medicijnLocaties, medicijnLocatieGroepen, medicijnGroepenUit, medicijnHoogrisico, medicijnEigenGroepen, klantnummer, communicatieKnoppen, journaalResizer, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, postverwerkingLab, postverwerkingBrief, zorgdomeinSnelkoppelingen, btnLabels }, () => {
+    setStorage({ postTypenUit, postWeglaten, postKopjes, postZdContact, medicijnLabwaarden, medicijnLocaties, medicijnLocatieGroepen, medicijnGroepenUit, medicijnHoogrisico, medicijnEigenGroepen, klantnummer, communicatieKnoppen, journaalResizer, enterNieuweRegel, soepOpslaanKnop, declarerenNietOpGebeurd, juvolyKnop, uprevent, medicijnMarkeringen, pdfExport, postverwerkingLab, postverwerkingBrief, zorgdomeinSnelkoppelingen, btnLabels }, () => {
       document.getElementById('status').textContent = 'Opgeslagen!';
       setTimeout(() => document.getElementById('status').textContent = '', 1500);
     });

@@ -6,10 +6,11 @@
       (de lijst met opties en uitklapsecties wordt lang, zeker sinds Postverwerking).
 
 ## Wensen
+- [ ] Live testen: Opslaan-knop (⌘↵) onder de SOEP in het journaal (optie soepOpslaanKnop) — slaat Bricks' Shift+Enter-route aan
 - [ ] Live testen: groep Indifferente middelen (tube-icoon) — vaseline, cetomacrogol, lanette, zinkoxide, ureum
 - [ ] Live testen: ketenzorg-badge [DM | HA · keten ✓] / niet geregistreerd bij bloeddruk- en diabetesmedicatie in autorisatie — API-vorm geverifieerd met testpatiënt 15626 (Broekpolder)
 
-- [ ] Gedrag van Enter aanpassen.
+- [x] Gedrag van Enter aanpassen — Enter = nieuwe regel in S/O/P van "Wijzig contact" (optie enterNieuweRegel); live testen.
 - [ ] Tandem 'in slaap' (opname start pas bij openen tab) live testen: tab niet meer weggooien, bevroren tab even wekken, Web Lock.
 - [ ] Autorisatie: patiëntbalk rood bij "UITGESCHREVEN" live testen.
 - [ ] Nieuwe medicatiegroepen live testen: Neusmedicatie (neus-icoon, o.a. budesonide-/fluticasonneusspray, xylometazoline)

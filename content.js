@@ -1336,6 +1336,143 @@ function journaalResizer_setup() {
 
 journaalResizer_setup();
 
+///////////////////////////////// ENTER = NIEUWE REGEL IN "WIJZIG CONTACT" ////////////////////////////////////////
+// Bricks vangt Enter af in de S/O/P-velden van "Wijzig contact" (zonder de instelling "Enter = volgende regel"
+// gebeurt er niets; een nieuwe regel kan alleen met spatie + Enter). Wij laten Enter de gewone nieuwe regel
+// maken door het event vóór Bricks' eigen handler te stoppen; de browser voegt de regel zelf in (input-event,
+// dus Vue krijgt de tekst gewoon). Tab gaat al naar het volgende veld. E blijft van Bricks (ICPC-keuze).
+let enterNieuweRegel_aan = true;
+
+function enterNieuweRegel_isVeld(el) {
+    if (!el || el.tagName !== 'TEXTAREA' || !el.closest('.deelcontact .form-textbox')) return false;
+    const rij = el.closest('.soep-content-input');
+    const letter = rij ? rij.textContent.trim().charAt(0) : '';
+    return letter === 'S' || letter === 'O' || letter === 'P';
+}
+
+function enterNieuweRegel_setup() {
+    loadGlobalOptions((options) => { enterNieuweRegel_aan = options.enterNieuweRegel !== false; });
+    try {
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === 'sync' && changes.enterNieuweRegel) enterNieuweRegel_aan = changes.enterNieuweRegel.newValue !== false;
+        });
+    } catch (e) { /* extensie herladen */ }
+    window.addEventListener('keydown', (e) => {
+        if (!enterNieuweRegel_aan || e.key !== 'Enter' || e.isComposing) return;
+        if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return; // sneltoetsen van Bricks laten staan
+        if (!enterNieuweRegel_isVeld(e.target)) return;
+        e.stopImmediatePropagation(); // geen preventDefault: de browser zet de nieuwe regel
+    }, true);
+}
+
+enterNieuweRegel_setup();
+
+///////////////////////////////// OPSLAAN-KNOP ONDER HET SOEP-INVOERBLOK IN HET JOURNAAL ///////////////////////////
+// Het invoerblok onderaan het journaal (.soep-control.soep-standalone) heeft geen Opslaan-knop: zonder de
+// Bricks-instelling "Enter = volgende regel" kan opslaan alleen met Shift+Enter. Bricks' eigen keydown-handler
+// op de textarea: Ctrl+Enter = iets anders, Shift+Enter = opslaan, daarna settings.soep.enterIsEnter.
+// De knop stuurt dus Shift+Enter naar het veld: Bricks' eigen opslaan met al zijn controles.
+// Op de Mac ook ⌘+Enter (Ctrl+Enter is van Bricks, dus op Windows blijft het Shift+Enter).
+const SOEP_OPSLAAN_CLASS = 'bi-soep-opslaan';
+const SOEP_IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+let soepOpslaan_aan = true;
+let soepOpslaan_timer = null;
+
+function soepOpslaan_velden(blok) {
+    return Array.from(blok.querySelectorAll('.soep-content-input textarea'));
+}
+
+function soepOpslaan_verstuur(veld) {
+    if (!veld) return;
+    veld.focus();
+    veld.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, shiftKey: true, bubbles: true, cancelable: true
+    }));
+}
+
+function soepOpslaan_bijwerken(blok) {
+    const velden = soepOpslaan_velden(blok);
+    const inhoud = blok.querySelector('.soep-content');
+    if (!velden.length || !inhoud) return;
+    let rij = inhoud.querySelector(':scope > .' + SOEP_OPSLAAN_CLASS);
+    if (!rij) {
+        rij = document.createElement('div');
+        rij.className = SOEP_OPSLAAN_CLASS;
+        rij.style.cssText = 'display:flex;justify-content:flex-end;padding:4px 0 2px;';
+        const knop = document.createElement('button');
+        knop.type = 'button';
+        knop.title = 'Contact opslaan (zelfde als ' + (SOEP_IS_MAC ? '⌘+Enter of ' : '') + 'Shift+Enter)';
+        knop.style.cssText = 'display:inline-flex;align-items:center;gap:6px;border:0;border-radius:4px;padding:3px 12px;'
+            + 'background:#58b89d;color:#fff;font-size:12px;font-weight:600;cursor:pointer;line-height:18px;';
+        knop.append('Opslaan');
+        const hint = document.createElement('span');
+        hint.textContent = SOEP_IS_MAC ? '⌘↵' : '⇧↵';
+        hint.style.cssText = 'font-weight:400;opacity:0.75;font-size:11px;';
+        knop.appendChild(hint);
+        // mousedown: focus niet uit het veld halen vóór de klik (Bricks kan bij blur al iets doen).
+        knop.addEventListener('mousedown', (e) => e.preventDefault());
+        knop.addEventListener('click', () => {
+            const vs = soepOpslaan_velden(blok);
+            const actief = vs.includes(document.activeElement) ? document.activeElement : null;
+            soepOpslaan_verstuur(actief || vs[vs.length - 1]);
+        });
+        rij.appendChild(knop);
+        inhoud.appendChild(rij);
+    }
+    // Rechts gelijk met de velden (niet met de vergroot-icoontjes ernaast).
+    const laatste = velden[velden.length - 1];
+    if (laatste.offsetParent) {
+        const pad = parseFloat(getComputedStyle(inhoud).paddingRight) || 0;
+        const gat = Math.round(inhoud.getBoundingClientRect().right - pad - laatste.getBoundingClientRect().right);
+        rij.style.paddingRight = Math.max(0, gat) + 'px';
+    }
+    // Alleen zichtbaar als er iets is ingevuld: een leeg blok blijft rustig.
+    rij.style.visibility = velden.some((v) => v.value.trim()) ? 'visible' : 'hidden';
+}
+
+function soepOpslaan_alles() {
+    soepOpslaan_timer = null;
+    const blokken = document.querySelectorAll('.soep-control.soep-standalone');
+    blokken.forEach((blok) => {
+        if (soepOpslaan_aan) soepOpslaan_bijwerken(blok);
+        else blok.querySelectorAll('.' + SOEP_OPSLAAN_CLASS).forEach((n) => n.remove());
+    });
+}
+
+function soepOpslaan_plan() {
+    if (!soepOpslaan_timer) soepOpslaan_timer = setTimeout(soepOpslaan_alles, 150);
+}
+
+function soepOpslaan_setup() {
+    loadGlobalOptions((options) => {
+        soepOpslaan_aan = options.soepOpslaanKnop !== false;
+        soepOpslaan_plan();
+    });
+    try {
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area !== 'sync' || !changes.soepOpslaanKnop) return;
+            soepOpslaan_aan = changes.soepOpslaanKnop.newValue !== false;
+            soepOpslaan_plan();
+        });
+    } catch (e) { /* extensie herladen */ }
+    new MutationObserver(soepOpslaan_plan).observe(document.documentElement, { childList: true, subtree: true });
+    document.addEventListener('input', (e) => {
+        if (e.target && e.target.closest && e.target.closest('.soep-control.soep-standalone')) soepOpslaan_plan();
+    }, true);
+    if (SOEP_IS_MAC) {
+        window.addEventListener('keydown', (e) => {
+            if (!soepOpslaan_aan || e.key !== 'Enter' || !e.metaKey || e.shiftKey || e.ctrlKey || e.altKey || e.isComposing) return;
+            const veld = e.target;
+            if (!veld || veld.tagName !== 'TEXTAREA' || !veld.closest('.soep-control.soep-standalone .soep-content-input')) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            soepOpslaan_verstuur(veld);
+        }, true);
+    }
+}
+
+soepOpslaan_setup();
+
 ///////////////////////////////// DECLAREREN NIET METEEEN OP GEBEURD ZETTEN //////////////////////////////////////////////////////////////
 
 let declareer_opGebeurdCheckbox = null;

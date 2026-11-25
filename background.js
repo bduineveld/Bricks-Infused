@@ -2,6 +2,8 @@
 const defaultOptions = {
   communicatieKnoppen: true,
   journaalResizer: true,
+  enterNieuweRegel: true,
+  soepOpslaanKnop: true,
   declarerenNietOpGebeurd: true,
   juvolyKnop: false,
   uprevent: false,

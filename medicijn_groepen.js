@@ -64,7 +64,7 @@ const MEDICIJN_STANDAARD_GROEPEN = [
             'dalteparine', 'enoxaparine', 'tinzaparine', 'fraxiparine', 'fragmin']
     },
     {
-        id: 'nsaid', stijl: 'strook', icoon: 'joints', kleurStrook: '#78716c', naam: "NSAID's", kleur: '#e7e5e4', aan: true, lab: ['egfr'],
+        id: 'nsaid', stijl: 'strook', icoon: 'pain', kleurStrook: '#78716c', naam: "NSAID's", kleur: '#e7e5e4', aan: true, lab: ['egfr'],
         woorden: ['ibuprofen', 'naproxen', 'diclofenac', 'aceclofenac', 'celecoxib', 'etoricoxib', 'meloxicam',
             'piroxicam', 'indometacine', 'ketoprofen', 'dexketoprofen', 'nabumeton', 'ketorolac', 'arthrotec']
     },
